@@ -33,17 +33,24 @@ jobs:
           unzip -q local-ai-v0.1.zip -d project
           test -f project/settings.gradle.kts
           test -f project/app/src/main/cpp/CMakeLists.txt
-          # Repair literal backslash-n sequences that were accidentally stored in Kotlin source.
+          # Repair escaped newlines only in the Kotlin package/import header.
+          # Do not rewrite the whole file: string literals may legitimately contain \\n.
           python3 - <<'PY'
           from pathlib import Path
           p = Path("project/app/src/main/java/dev/localai/chat/ui/chat/ChatViewModel.kt")
           s = p.read_text()
-          if r'\n' in s:
-              s = s.replace(r'\n', '\n')
+          marker = "class ChatViewModel"
+          end = s.find(marker)
+          if end < 0:
+              raise SystemExit("Could not locate ChatViewModel class declaration")
+          header, body = s[:end], s[end:]
+          if r'\n' in header:
+              header = header.replace(r'\n', '\n')
+              s = header + body
               p.write_text(s)
-              print("Repaired literal backslash-n sequences in ChatViewModel.kt")
-          print("--- ChatViewModel.kt first 25 lines ---")
-          for i, line in enumerate(p.read_text().splitlines()[:25], 1):
+              print("Repaired escaped newlines in ChatViewModel.kt header only")
+          print("--- ChatViewModel.kt first 65 lines ---")
+          for i, line in enumerate(p.read_text().splitlines()[:65], 1):
               print(f"{i}: {line}")
           PY
 
