@@ -59,20 +59,10 @@ jobs:
         run: |
           git clone --depth 1 --branch v0.3.0 https://github.com/ggml-org/llama.cpp project/app/src/main/cpp/llama.cpp
 
-      - name: Adapt JNI bridge to pinned llama.cpp API
+      - name: Verify JNI bridge uses pinned llama.cpp API
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("project/app/src/main/cpp/llama-jni.cpp")
-          s = p.read_text()
-          old = "llama_token_to_piece(vocab, token, piece.data(), (int) piece.size())"
-          new = "llama_token_to_piece(vocab, token, piece.data(), (int) piece.size(), 0, true)"
-          count = s.count(old)
-          if count != 2:
-              raise SystemExit(f"Expected 2 outdated llama_token_to_piece calls, found {count}")
-          p.write_text(s.replace(old, new))
-          print(f"Updated {count} llama_token_to_piece calls for llama.cpp v0.3.0")
-          PY
+          grep -Fq 'llama_token_to_piece(vocab, token, piece.data(), (int) piece.size(), 0, true)' project/app/src/main/cpp/llama-jni.cpp
+          test "$(grep -Fc 'llama_token_to_piece(vocab, token, piece.data(), (int) piece.size(), 0, true)' project/app/src/main/cpp/llama-jni.cpp)" -eq 2
 
       - name: Build release APK
         working-directory: project
