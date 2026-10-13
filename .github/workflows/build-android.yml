@@ -33,6 +33,21 @@ jobs:
           unzip -q local-ai-v0.1.zip -d project
           test -f project/settings.gradle.kts
           test -f project/app/src/main/cpp/CMakeLists.txt
+          # Repair escaped newline sequences in the chat ViewModel if present in its source header.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("project/app/src/main/java/dev/localai/chat/ui/chat/ChatViewModel.kt")
+          s = p.read_text()
+          header = "\\n".join(s.splitlines()[:30])
+          if r"\\n" in header:
+              s = s.replace(r"\\n", "\\n")
+              p.write_text(s)
+              print("Repaired escaped newline sequences in ChatViewModel.kt")
+          else:
+              print("ChatViewModel.kt header has no escaped newline sequences")
+          print("--- ChatViewModel.kt first 25 lines ---")
+          for i, line in enumerate(p.read_text().splitlines()[:25], 1):
+              print(f"{i}: {line}")
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
