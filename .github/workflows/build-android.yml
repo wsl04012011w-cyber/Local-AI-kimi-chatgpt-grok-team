@@ -49,8 +49,20 @@ jobs:
               s = header + body
               p.write_text(s)
               print("Repaired escaped newlines in ChatViewModel.kt header only")
-          print("--- ChatViewModel.kt first 65 lines ---")
-          for i, line in enumerate(p.read_text().splitlines()[:65], 1):
+          # Restore Kotlin escaped newlines in the two prompt-template constants.
+          # Their embedded line breaks currently terminate ordinary quoted strings.
+          s = p.read_text()
+          s = s.replace(
+              'private const val CHAT_TEMPLATE_SYSTEM =\n    "<|im_start|>system\nVoce e um assistente util e conciso. Responda no idioma do usuario.<|im_end|>\n"',
+              'private const val CHAT_TEMPLATE_SYSTEM =\n    "<|im_start|>system\\nVoce e um assistente util e conciso. Responda no idioma do usuario.<|im_end|>\\n"'
+          )
+          s = s.replace(
+              'private const val CHAT_TEMPLATE_PREFIX = "<|im_start|>%s\n%s<|im_end|>\n"',
+              'private const val CHAT_TEMPLATE_PREFIX = "<|im_start|>%s\\n%s<|im_end|>\\n"'
+          )
+          p.write_text(s)
+          print("--- ChatViewModel.kt lines 48-62 ---")
+          for i, line in enumerate(p.read_text().splitlines()[47:62], 48):
               print(f"{i}: {line}")
           PY
 
