@@ -59,8 +59,36 @@ jobs:
         run: |
           git clone --depth 1 --branch v0.3.0 https://github.com/ggml-org/llama.cpp project/app/src/main/cpp/llama.cpp
 
-      - name: Verify JNI bridge uses pinned llama.cpp API
+      - name: Patch JNI source for pinned llama.cpp API
         run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("project/app/src/main/cpp/llama-jni.cpp")
+          s = p.read_text()
+
+          # Repair an accidentally escaped newline between declarations.
+          s = s.replace(r'\nstd::mutex g_model_mutex;', '\nstd::mutex g_model_mutex;')
+
+          # Use the memory API present in llama.cpp v0.3.0.
+          s = s.replace(
+              'llama_kv_cache_clear(g_ctx);',
+              'llama_memory_clear(llama_get_memory(g_ctx), true);'
+          )
+
+          if '#include <mutex>' not in s:
+              s = '#include <mutex>\n' + s
+          if '#include <atomic>' not in s:
+              s = '#include <atomic>\n' + s
+
+          p.write_text(s)
+          if r'\nstd::mutex g_model_mutex;' in s:
+              raise SystemExit("Failed to repair escaped newline in llama-jni.cpp")
+          if 'llama_kv_cache_clear(g_ctx);' in s:
+              raise SystemExit("Unsupported llama_kv_cache_clear call remains")
+          if 'llama_memory_clear(llama_get_memory(g_ctx), true);' not in s:
+              raise SystemExit("Expected llama.cpp v0.3.0 memory-clear call missing")
+          print("JNI source compatibility fixes applied")
+          PY
           grep -Fq 'llama_token_to_piece(vocab, token, piece.data(), (int) piece.size(), 0, true)' project/app/src/main/cpp/llama-jni.cpp
           test "$(grep -Fc 'llama_token_to_piece(vocab, token, piece.data(), (int) piece.size(), 0, true)' project/app/src/main/cpp/llama-jni.cpp)" -eq 2
 
