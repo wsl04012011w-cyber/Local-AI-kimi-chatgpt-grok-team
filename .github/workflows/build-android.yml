@@ -78,10 +78,50 @@ jobs:
         working-directory: project
         run: gradle --no-daemon --stacktrace :app:assembleRelease
 
+      - name: Sign release APK
+        working-directory: project
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          test -f "$APK" || {
+            echo "::error::Unsigned release APK not found at $APK"
+            exit 1
+          }
+
+          # Ephemeral signing key: this makes the APK installable, but future
+          # workflow runs use a different key unless a persistent keystore is configured.
+          STORE_PASS="$(openssl rand -hex 24)"
+          KEY_PASS="$(openssl rand -hex 24)"
+          KEYSTORE="$RUNNER_TEMP/local-ai-release.keystore"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -x "$BUILD_TOOLS/zipalign"
+          test -x "$BUILD_TOOLS/apksigner"
+
+          keytool -genkeypair -noprompt \
+            -keystore "$KEYSTORE" \
+            -storetype JKS \
+            -storepass "$STORE_PASS" \
+            -keypass "$KEY_PASS" \
+            -alias local-ai-release \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Local AI Release,O=Local AI,C=BR"
+
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$APK" app-release-aligned.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias local-ai-release \
+            --ks-pass "pass:$STORE_PASS" \
+            --key-pass "pass:$KEY_PASS" \
+            --out app-release-signed.apk \
+            app-release-aligned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose app-release-signed.apk
+          rm -f app-release-aligned.apk "$KEYSTORE"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: local-ai-release-apk
-          path: project/app/build/outputs/apk/release/*.apk
+          name: local-ai-release-signed-apk
+          path: project/app-release-signed.apk
           if-no-files-found: error
           retention-days: 14
