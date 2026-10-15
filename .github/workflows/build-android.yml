@@ -4,7 +4,11 @@ on:
   push:
     branches: [main]
     paths:
-      - "local-ai-v0.1.zip"
+      - "app/**"
+      - "gradle/**"
+      - "*.gradle"
+      - "*.gradle.kts"
+      - "gradle.properties"
       - ".github/workflows/build-android.yml"
   workflow_dispatch:
 
