@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Local AI</string>
+    <string name="chat_input_placeholder">Pergunte algo…</string>
+    <string name="chat_input_placeholder_no_model">Carregue um modelo para começar</string>
+    <string name="load_model">Carregar modelo</string>
+    <string name="unload_model">Descarregar modelo</string>
+    <string name="clear_chat">Limpar conversa</string>
+    <string name="importing_model">Copiando modelo…</string>
+    <string name="settings">Configurações</string>
+    <string name="empty_state_title_no_model">Nenhum modelo carregado</string>
+    <string name="empty_state_body_no_model">Carregue um modelo .gguf para começar a conversar. Tudo roda no aparelho, sem internet.</string>
+    <string name="empty_state_title_ready">Pronto para conversar</string>
+    <string name="empty_state_body_ready">Tudo roda no aparelho, sem internet. Escolha uma sugestão ou escreva abaixo.</string>
+</resources>
