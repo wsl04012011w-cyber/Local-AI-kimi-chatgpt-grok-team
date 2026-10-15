@@ -2,6 +2,7 @@ package dev.localai.chat.ui.chat
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -211,56 +212,41 @@ class ChatViewModel @Inject constructor(
                 val visibleSb = StringBuilder()
                 val thinkingSb = StringBuilder()
                 var cancelled = false
+                var lastUiPublishMs = 0L
+                var streamingThinking = false
                 try {
                     engine.generate(prompt).collect { token ->
                         val out = processor.feed(token)
-                        if (out.turnBoundaryReached) engine.cancel()   // modelo abriu um novo turno
+                        if (out.turnBoundaryReached) engine.cancel()
 
                         if (out.thinkingJustStarted) {
                             _generationState.value = GenerationState.Thinking
-                            updateStreaming(
-                                assistantId,
-                                visibleSb.toString(),
-                                thinkingSb.toString(),
-                                isThinking = true,
-                            )
+                            streamingThinking = true
                         }
-                        if (out.thinkingDelta.isNotEmpty()) {
-                            thinkingSb.append(out.thinkingDelta)
-                            updateStreaming(
-                                assistantId,
-                                visibleSb.toString(),
-                                thinkingSb.toString(),
-                                isThinking = true,
-                            )
-                        }
+                        if (out.thinkingDelta.isNotEmpty()) thinkingSb.append(out.thinkingDelta)
                         if (out.thinkingJustEnded) {
                             _generationState.value = GenerationState.Generating
-                            updateStreaming(
-                                assistantId,
-                                visibleSb.toString(),
-                                thinkingSb.toString(),
-                                isThinking = false,
-                            )
+                            streamingThinking = false
                         }
-                        if (out.visibleDelta.isNotEmpty()) {
-                            visibleSb.append(out.visibleDelta)
+                        if (out.visibleDelta.isNotEmpty()) visibleSb.append(out.visibleDelta)
+
+                        // Agrupa a publicação em no máximo ~16 atualizações por segundo.
+                        // toString() e a cópia do item visual só acontecem no flush agrupado.
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastUiPublishMs >= 60L) {
                             updateStreaming(
                                 assistantId,
                                 visibleSb.toString(),
                                 thinkingSb.toString(),
-                                isThinking = out.phase == TokenStreamProcessor.Phase.THINKING,
+                                isThinking = streamingThinking,
                             )
+                            lastUiPublishMs = now
                         }
                     }
                     // Flush residual buffer
                     val finalOut = processor.flush()
-                    if (finalOut.thinkingDelta.isNotEmpty()) {
-                        thinkingSb.append(finalOut.thinkingDelta)
-                    }
-                    if (finalOut.visibleDelta.isNotEmpty()) {
-                        visibleSb.append(finalOut.visibleDelta)
-                    }
+                    if (finalOut.thinkingDelta.isNotEmpty()) thinkingSb.append(finalOut.thinkingDelta)
+                    if (finalOut.visibleDelta.isNotEmpty()) visibleSb.append(finalOut.visibleDelta)
                 } catch (e: CancellationException) {
                     cancelled = true
                     // Ainda faz flush do que estiver no buffer
