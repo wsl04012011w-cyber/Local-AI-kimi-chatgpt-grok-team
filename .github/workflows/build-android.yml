@@ -65,7 +65,7 @@ jobs:
       - name: Install Android NDK and CMake
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager --install "ndk;27.0.12077973" "cmake;3.22.1" "platform-tools"
 
       - name: Fetch pinned llama.cpp source
