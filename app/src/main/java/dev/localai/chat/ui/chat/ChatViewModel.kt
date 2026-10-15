@@ -193,7 +193,7 @@ class ChatViewModel @Inject constructor(
                 val turns = PromptHistory.select(
                     priorTurns + ChatTurn(ChatTurn.USER, trimmed),
                     maxTurns = if (nCtx > 4096) 24 else PromptHistory.MAX_TURNS,
-                    maxChars = nCtx * 2,   // ~2 caracteres por token de contexto (margem p/ resposta)
+                    maxChars = PromptHistory.charBudget(nCtx),
                 )
                 newAssistantId to withContext(Dispatchers.IO) { engine.buildPrompt(turns) }
             } catch (e: CancellationException) {
