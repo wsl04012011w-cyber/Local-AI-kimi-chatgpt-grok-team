@@ -8,7 +8,10 @@ package dev.localai.chat.llm
 object PromptHistory {
 
     const val MAX_TURNS = 12
-    const val MAX_CHARS = 8000   // ~2,3 mil tokens: deixa espaco no contexto de 4096
+    const val MAX_CHARS = 8000   // fallback para chamadas legadas sem nCtx
+
+    /** Orçamento único aproximado: deixa espaço para system prompt e resposta. */
+    fun charBudget(nCtx: Int): Int = (nCtx.coerceAtLeast(512) * 2).coerceAtLeast(MAX_CHARS)
 
     fun select(
         history: List<ChatTurn>,
@@ -31,11 +34,16 @@ object PromptHistory {
             }
         }
 
-        // 3. janela: ultimos turnos e, depois, orcamento de caracteres (remove os mais antigos)
-        var window: List<ChatTurn> = merged.takeLast(maxTurns)
+        // 3. Janela por turnos. Ao exceder o orçamento, remove blocos de cerca de
+        // metade dos turnos antigos (sempre número par) para manter user/assistant alternados.
+        var window: List<ChatTurn> = merged.takeLast(maxTurns.coerceAtLeast(1))
         while (window.size > 1 && window.sumOf { it.content.length } > maxChars) {
-            window = window.drop(1)
+            val half = (window.size / 2).coerceAtLeast(1)
+            val block = if (half % 2 == 0) half else half + 1
+            window = window.drop(block.coerceAtMost(window.size - 1))
         }
+
+        // ROADMAP: context shifting em blocos de tokens sem reconstruir o prompt inteiro.
 
         // 4. a conversa precisa comecar por um turno de usuario
         while (window.isNotEmpty() && window.first().role != ChatTurn.USER) {
