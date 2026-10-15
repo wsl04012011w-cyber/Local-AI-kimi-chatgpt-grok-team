@@ -21,13 +21,16 @@ enum class KvCacheType(val code: Int, val label: String, val bitsPerElement: Flo
 data class InferenceSettings(
     val nCtx: Int = 4096,
     val nThreads: Int = defaultThreads(),
-    val flashAttn: Boolean = true,
+    val flashAttn: Boolean = false,
     val kvTypeK: KvCacheType = KvCacheType.F16,
     val kvTypeV: KvCacheType = KvCacheType.F16,
     val useMmap: Boolean = true,
     val useMlock: Boolean = false,
     val reuseCache: Boolean = true,
 ) {
+    /** Prefill usa todos os núcleos disponíveis; não altera preferências antigas. */
+    val nThreadsBatch: Int get() = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+
     /** V quantizado exige flash attention no llama.cpp. */
     val effectiveFlashAttn: Boolean get() = flashAttn || kvTypeV.isQuantized
 
@@ -37,8 +40,21 @@ data class InferenceSettings(
     companion object {
         val CTX_OPTIONS = listOf(2048, 4096, 8192)
 
-        fun defaultThreads(): Int =
-            (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 6)
+        fun defaultThreads(): Int {
+            val fallback = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 6)
+            return runCatching {
+                val cpuRoot = java.io.File("/sys/devices/system/cpu")
+                val frequencies = cpuRoot.listFiles { f ->
+                    f.isDirectory && f.name.matches(Regex("cpu\\d+"))
+                }.orEmpty().mapNotNull { cpu ->
+                    runCatching {
+                        java.io.File(cpu, "cpufreq/cpuinfo_max_freq").readText().trim().toLong()
+                    }.getOrNull()
+                }
+                val maximum = frequencies.maxOrNull() ?: return@runCatching fallback
+                frequencies.count { it == maximum }.coerceAtLeast(1)
+            }.getOrDefault(fallback)
+        }
     }
 }
 
