@@ -36,6 +36,7 @@ class InferenceEngine @Inject constructor() {
                 path = path,
                 nCtx = settings.nCtx,
                 nThreads = settings.nThreads,
+                nThreadsBatch = settings.nThreadsBatch,
                 flashAttn = settings.effectiveFlashAttn,
                 kvTypeK = settings.kvTypeK.code,
                 kvTypeV = settings.kvTypeV.code,
