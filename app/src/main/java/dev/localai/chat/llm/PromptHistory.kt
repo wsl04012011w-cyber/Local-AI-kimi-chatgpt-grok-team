@@ -11,7 +11,7 @@ object PromptHistory {
     const val MAX_CHARS = 8000   // fallback para chamadas legadas sem nCtx
 
     /** Orçamento único aproximado: deixa espaço para system prompt e resposta. */
-    fun charBudget(nCtx: Int): Int = (nCtx.coerceAtLeast(512) * 2).coerceAtLeast(MAX_CHARS)
+    fun charBudget(nCtx: Int): Int = nCtx.coerceAtLeast(512) * 2
 
     fun select(
         history: List<ChatTurn>,
