@@ -157,9 +157,9 @@ fun ChatScreen(viewModel: ChatViewModel = hiltViewModel()) {
         } else {
             buildList {
                 add("ctx ${settings.nCtx}")
-                if (settings.effectiveFlashAttn) add("FA")
+                add("FA ${if (settings.effectiveFlashAttn) "ON" else "OFF"}")
                 add("KV ${settings.kvTypeK.label}/${settings.kvTypeV.label}")
-                add("${settings.nThreads} threads")
+                add("geração ${settings.nThreads} / prefill ${settings.nThreadsBatch} threads")
                 stats?.let {
                     if (it.reusedTokens > 0) add("↻ ${it.reusedTokens} tok em cache")
                     if (it.genTokensPerSecond > 0f) add("%.1f tok/s".format(it.genTokensPerSecond))
