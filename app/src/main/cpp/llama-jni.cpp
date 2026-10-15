@@ -155,8 +155,13 @@ Java_dev_localai_chat_llm_LlamaBridge_loadModel(
 
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = 0; // CPU-only no Android (v1). Vulkan fica pro roadmap.
-    mparams.use_mmap  = useMmap  == JNI_TRUE;   // false = le o modelo inteiro para a RAM
-    mparams.use_mlock = useMlock == JNI_TRUE;   // trava as paginas na RAM (pode falhar por RLIMIT_MEMLOCK)
+    // A API atual do llama.cpp substituiu use_mmap/use_mlock por load_mode.
+    // Mantem a configuracao selecionada pelo usuario usando o enum oficial.
+    const bool want_mmap = useMmap == JNI_TRUE;
+    const bool want_mlock = useMlock == JNI_TRUE;
+    mparams.load_mode = want_mmap
+        ? (want_mlock ? LLAMA_LOAD_MODE_MMAP_MLOCK : LLAMA_LOAD_MODE_MMAP)
+        : (want_mlock ? LLAMA_LOAD_MODE_MLOCK : LLAMA_LOAD_MODE_NONE);
 
     g_model = llama_model_load_from_file(c_path.c_str(), mparams);
     if (!g_model) {
@@ -193,10 +198,10 @@ Java_dev_localai_chat_llm_LlamaBridge_loadModel(
     g_vocab = llama_model_get_vocab(g_model);
     g_cached.clear();
     g_loaded.store(true);
-    LOGI("stage=load_model ok n_ctx=%d n_batch=%d threads=%d fa=%d k=%s v=%s mmap=%d mlock=%d reuse=%d",
+    LOGI("stage=load_model ok n_ctx=%d n_batch=%d threads=%d fa=%d k=%s v=%s load_mode=%s reuse=%d",
          (int) llama_n_ctx(g_ctx), kBatch, (int) nThreads, use_fa ? 1 : 0,
          ggml_type_name(cparams.type_k), ggml_type_name(cparams.type_v),
-         (int) mparams.use_mmap, (int) mparams.use_mlock, g_reuse_cache ? 1 : 0);
+         llama_load_mode_name(mparams.load_mode), g_reuse_cache ? 1 : 0);
     return JNI_TRUE;
 }
 
