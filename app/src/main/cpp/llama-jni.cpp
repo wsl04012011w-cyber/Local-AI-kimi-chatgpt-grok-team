@@ -142,7 +142,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM*, void*) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_dev_localai_chat_llm_LlamaBridge_loadModel(
         JNIEnv* env, jobject, jstring path,
-        jint nCtx, jint nThreads, jboolean flashAttn,
+        jint nCtx, jint nThreads, jint nThreadsBatch, jboolean flashAttn,
         jint kvTypeK, jint kvTypeV,
         jboolean useMmap, jboolean useMlock, jboolean reuseCache) {
     // Sinaliza ANTES de esperar o mutex: uma geracao em andamento precisa ver o cancelamento.
@@ -173,10 +173,8 @@ Java_dev_localai_chat_llm_LlamaBridge_loadModel(
     cparams.n_ctx    = (uint32_t) std::max(512, (int) nCtx);
     cparams.n_batch  = kBatch;
     cparams.n_ubatch = kBatch;
-    if (nThreads > 0) {
-        cparams.n_threads       = (int32_t) nThreads;
-        cparams.n_threads_batch = (int32_t) nThreads;
-    }
+    if (nThreads > 0) cparams.n_threads = (int32_t) nThreads;
+    if (nThreadsBatch > 0) cparams.n_threads_batch = (int32_t) nThreadsBatch;
 
     cparams.type_k = kv_type_from_code((int) kvTypeK);
     cparams.type_v = kv_type_from_code((int) kvTypeV);
@@ -184,7 +182,7 @@ Java_dev_localai_chat_llm_LlamaBridge_loadModel(
     bool use_fa = flashAttn == JNI_TRUE;
     if (cparams.type_v != GGML_TYPE_F16 && !use_fa) {
         use_fa = true;
-        LOGI("stage=load_context V quantizado exige flash attention: ligando");
+        LOGI("stage=load_context V quantizado exige flash attention: ligando (pode ser mais lento em CPU)");
     }
     set_flash_attn(cparams, use_fa, 0);
     g_reuse_cache = reuseCache == JNI_TRUE;
@@ -196,10 +194,12 @@ Java_dev_localai_chat_llm_LlamaBridge_loadModel(
     }
 
     g_vocab = llama_model_get_vocab(g_model);
+    const char* system_info = llama_print_system_info();
+    LOGI("stage=system_info %s", system_info ? system_info : "indisponivel");
     g_cached.clear();
     g_loaded.store(true);
-    LOGI("stage=load_model ok n_ctx=%d n_batch=%d threads=%d fa=%d k=%s v=%s load_mode=%s reuse=%d",
-         (int) llama_n_ctx(g_ctx), kBatch, (int) nThreads, use_fa ? 1 : 0,
+    LOGI("stage=load_model ok n_ctx=%d n_batch=%d threads=%d threads_batch=%d fa=%d k=%s v=%s load_mode=%s reuse=%d",
+         (int) llama_n_ctx(g_ctx), kBatch, (int) nThreads, (int) nThreadsBatch, use_fa ? 1 : 0,
          ggml_type_name(cparams.type_k), ggml_type_name(cparams.type_v),
          llama_load_mode_name(mparams.load_mode), g_reuse_cache ? 1 : 0);
     return JNI_TRUE;
