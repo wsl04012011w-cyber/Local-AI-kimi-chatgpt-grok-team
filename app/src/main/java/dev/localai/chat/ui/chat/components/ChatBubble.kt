@@ -128,8 +128,17 @@ private fun AssistantMessage(message: ChatMessage, onToggleThinking: (() -> Unit
             }
 
             if (message.content.isNotEmpty()) {
-                SelectionContainer {
-                    MessageContent(message.content)
+                if (message.isStreaming) {
+                    // Texto simples durante a geração evita parse de markdown em cada publicação.
+                    Text(
+                        text = message.content,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                } else {
+                    SelectionContainer {
+                        MessageContent(message.content)
+                    }
                 }
             }
 
@@ -270,10 +279,13 @@ private fun parseBlocks(src: String): List<Block> {
     return out.filter { it !is Block.Prose || it.text.isNotBlank() }
 }
 
+private val HEADING_REGEX = Regex("(?m)^#{1,6}\\s+(.+)$")
+private val LIST_REGEX = Regex("(?m)^(\\s*)[-*] ")
+
 private fun markdownInline(raw: String, codeBg: Color, codeFg: Color): AnnotatedString {
     val src = raw
-        .replace(Regex("(?m)^#{1,6}\\s+(.+)$"), "**\$1**")
-        .replace(Regex("(?m)^(\\s*)[-*] "), "\$1• ")
+        .replace(HEADING_REGEX, "**\$1**")
+        .replace(LIST_REGEX, "\$1• ")
     return buildAnnotatedString {
         var i = 0
         while (i < src.length) {
@@ -299,7 +311,16 @@ private fun markdownInline(raw: String, codeBg: Color, codeFg: Color): Annotated
                     }
                 }
                 else -> {
-                    append(src[i]); i++
+                    val bold = src.indexOf("**", i).let { if (it < 0) src.length else it }
+                    val code = src.indexOf('`', i).let { if (it < 0) src.length else it }
+                    val next = minOf(bold, code)
+                    if (next > i) {
+                        append(src.substring(i, next))
+                        i = next
+                    } else {
+                        append(src[i])
+                        i++
+                    }
                 }
             }
         }
