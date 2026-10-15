@@ -18,6 +18,7 @@ object LlamaBridge {
         path: String,
         nCtx: Int,
         nThreads: Int,
+        nThreadsBatch: Int,
         flashAttn: Boolean,
         kvTypeK: Int,
         kvTypeV: Int,
