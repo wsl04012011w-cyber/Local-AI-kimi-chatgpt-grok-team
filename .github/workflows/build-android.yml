@@ -5,66 +5,46 @@ on:
     branches: [main]
     paths:
       - "local-ai-v0.1.zip"
+      - ".github/workflows/build-android.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-apk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
-    name: Build release APK
+    name: Import project and build release APK
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Checkout workflow repository
+      - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          persist-credentials: true
 
-      - name: Verify and extract project ZIP
+      - name: Import project files and remove ZIP
+        shell: bash
         run: |
-          test -f local-ai-v0.1.zip || {
-            echo "::error::Upload local-ai-v0.1.zip to the repository root first."
-            exit 1
-          }
-          mkdir project
-          unzip -q local-ai-v0.1.zip -d project
-          test -f project/settings.gradle.kts
-          test -f project/app/src/main/cpp/CMakeLists.txt
-          # Repair escaped newlines only in the Kotlin package/import header.
-          # Do not rewrite the whole file: string literals may legitimately contain \\n.
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("project/app/src/main/java/dev/localai/chat/ui/chat/ChatViewModel.kt")
-          s = p.read_text()
-          marker = "class ChatViewModel"
-          end = s.find(marker)
-          if end < 0:
-              raise SystemExit("Could not locate ChatViewModel class declaration")
-          header, body = s[:end], s[end:]
-          if r'\n' in header:
-              header = header.replace(r'\n', '\n')
-              s = header + body
-              p.write_text(s)
-              print("Repaired escaped newlines in ChatViewModel.kt header only")
-          # Restore Kotlin escaped newlines in the two prompt-template constants.
-          # Their embedded line breaks currently terminate ordinary quoted strings.
-          s = p.read_text()
-          s = s.replace(
-              'private const val CHAT_TEMPLATE_SYSTEM =\n    "<|im_start|>system\nVoce e um assistente util e conciso. Responda no idioma do usuario.<|im_end|>\n"',
-              'private const val CHAT_TEMPLATE_SYSTEM =\n    "<|im_start|>system\\nVoce e um assistente util e conciso. Responda no idioma do usuario.<|im_end|>\\n"'
-          )
-          s = s.replace(
-              'private const val CHAT_TEMPLATE_PREFIX = "<|im_start|>%s\n%s<|im_end|>\n"',
-              'private const val CHAT_TEMPLATE_PREFIX = "<|im_start|>%s\\n%s<|im_end|>\\n"'
-          )
-          p.write_text(s)
-          print("--- ChatViewModel.kt lines 48-62 ---")
-          for i, line in enumerate(p.read_text().splitlines()[47:62], 48):
-              print(f"{i}: {line}")
-          PY
+          set -euo pipefail
+          if [[ -f local-ai-v0.1.zip ]]; then
+            unzip -oq local-ai-v0.1.zip -d .
+            rm -f local-ai-v0.1.zip
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            if ! git diff --cached --quiet; then
+              git commit -m "Import Local AI Android project sources"
+              git push
+            fi
+          fi
+          test -f settings.gradle.kts
+          test -f app/build.gradle.kts
+          test -f app/src/main/cpp/CMakeLists.txt
+          echo "Project sources are present at repository root."
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -83,56 +63,19 @@ jobs:
           packages: platform-tools
 
       - name: Install Android NDK and CMake
+        shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null
           sdkmanager --install "ndk;27.0.12077973" "cmake;3.22.1" "platform-tools"
 
       - name: Fetch pinned llama.cpp source
         run: |
-          git clone --depth 1 --branch v0.3.0 https://github.com/ggml-org/llama.cpp project/app/src/main/cpp/llama.cpp
-
-      - name: Patch JNI source for pinned llama.cpp API
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("project/app/src/main/cpp/llama-jni.cpp")
-          s = p.read_text()
-
-          # Repair an accidentally escaped newline between declarations.
-          s = s.replace(r'\nstd::mutex g_model_mutex;', '\nstd::mutex g_model_mutex;')
-
-          # Use the memory API present in llama.cpp v0.3.0.
-          s = s.replace(
-              'llama_kv_cache_clear(g_ctx);',
-              'llama_memory_clear(llama_get_memory(g_ctx), true);'
-          )
-          # v0.3.0 does not expose llama_kv_cache_seq_rm; clear the context memory instead.
-          s = s.replace(
-              'llama_kv_cache_seq_rm(g_ctx, -1, 0, -1);',
-              'llama_memory_clear(llama_get_memory(g_ctx), true);'
-          )
-
-          if '#include <mutex>' not in s:
-              s = '#include <mutex>\n' + s
-          if '#include <atomic>' not in s:
-              s = '#include <atomic>\n' + s
-
-          p.write_text(s)
-          if r'\nstd::mutex g_model_mutex;' in s:
-              raise SystemExit("Failed to repair escaped newline in llama-jni.cpp")
-          if 'llama_kv_cache_clear(g_ctx);' in s or 'llama_kv_cache_seq_rm(' in s:
-              raise SystemExit("Unsupported llama.cpp KV-cache API call remains")
-          print("JNI source compatibility patch/validation completed")
-          PY
-          grep -Fq 'llama_token_to_piece(vocab, token, piece.data(), (int) piece.size(), 0, true)' project/app/src/main/cpp/llama-jni.cpp
-          test "$(grep -Fc 'llama_token_to_piece(vocab, token, piece.data(), (int) piece.size(), 0, true)' project/app/src/main/cpp/llama-jni.cpp)" -eq 2
+          git clone --depth 1 --branch v0.3.0 https://github.com/ggml-org/llama.cpp app/src/main/cpp/llama.cpp
 
       - name: Build release APK
-        working-directory: project
         run: gradle --no-daemon --stacktrace :app:assembleRelease
 
       - name: Sign release APK
-        working-directory: project
         shell: bash
         run: |
           set -euo pipefail
@@ -142,8 +85,6 @@ jobs:
             exit 1
           }
 
-          # Ephemeral signing key: this makes the APK installable, but future
-          # workflow runs use a different key unless a persistent keystore is configured.
           STORE_PASS="$(openssl rand -hex 24)"
           KEY_PASS="$(openssl rand -hex 24)"
           KEYSTORE="$RUNNER_TEMP/local-ai-release.keystore"
@@ -175,6 +116,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: local-ai-release-signed-apk
-          path: project/app-release-signed.apk
+          path: app-release-signed.apk
           if-no-files-found: error
           retention-days: 14
