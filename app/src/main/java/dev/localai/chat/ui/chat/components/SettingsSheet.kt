@@ -64,6 +64,12 @@ fun SettingsSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                "Estado atual: FA " + (if (settings.effectiveFlashAttn) "ligada" else "desligada") +
+                    " · geração " + settings.nThreads + " threads · prefill " + settings.nThreadsBatch + " threads",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(Modifier.height(10.dp))
 
             // --- Contexto e threads
