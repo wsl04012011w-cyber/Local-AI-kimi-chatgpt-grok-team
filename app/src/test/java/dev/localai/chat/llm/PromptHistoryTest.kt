@@ -1,6 +1,7 @@
 package dev.localai.chat.llm
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PromptHistoryTest {
@@ -53,4 +54,30 @@ class PromptHistoryTest {
         val r = PromptHistory.select(prior + u("m3"))
         assertEquals(listOf("m1", "r1", "m2", "r2", "m3"), r.map { it.content })
     }
+    @Test fun prefixRemainsStableAcrossConsecutiveTurnsUntilBlockTrim() {
+        val history = listOf(u("u1"), a("a1"), u("u2"), a("a2"))
+        val first = PromptHistory.select(history)
+        val next = PromptHistory.select(history + u("u3"))
+        assertEquals(first, next.take(first.size))
+    }
+
+    @Test fun blockTruncationKeepsUserAssistantAlternation() {
+        val big = "x".repeat(1200)
+        val turns = (1..8).flatMap { listOf(u("u$it-$big"), a("a$it-$big")) }
+        val selected = PromptHistory.select(turns, maxTurns = 16, maxChars = 5000)
+        assertEquals(ChatTurn.USER, selected.first().role)
+        for (i in selected.indices) {
+            if (i > 0) assertTrue(selected[i - 1].role != selected[i].role)
+        }
+        assertTrue(selected.size <= 8)
+    }
+
+    @Test fun systemPromptIsAlwaysPrependedByPromptBuilderContract() {
+        // PromptHistory aceita apenas turnos de usuário/assistente; system é adicionado
+        // pelo InferenceEngine.buildPrompt em todas as chamadas.
+        val selected = PromptHistory.select(listOf(u("oi"), a("olá")))
+        assertTrue(selected.none { it.role == ChatTurn.SYSTEM })
+        assertEquals(listOf(ChatTurn.USER, ChatTurn.ASSISTANT), selected.map { it.role })
+    }
+
 }
