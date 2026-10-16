@@ -50,7 +50,7 @@ fun LocalAiWebScreen(
     val context = LocalContext.current
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val modelState by viewModel.modelState.collectAsStateWithLifecycle()
-    val settings by viewModel.webSettings.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
     val generationState by viewModel.generationState.collectAsStateWithLifecycle()
@@ -78,7 +78,7 @@ fun LocalAiWebScreen(
                 "unloadModel" -> viewModel.unloadModel()
                 "toggleThinking" -> viewModel.toggleThinkingVisibility(command.optLong("id"))
                 "applySettings" -> {
-                    val current = viewModel.webSettings.value
+                    val current = viewModel.settings.value
                     val values = command.optJSONObject("settings") ?: JSONObject()
                     val kvK = KvCacheType.fromCode(values.optInt("kvTypeK", current.kvTypeK.code))
                     val kvV = KvCacheType.fromCode(values.optInt("kvTypeV", current.kvTypeV.code))
@@ -276,18 +276,18 @@ private fun createStateJson(
         is ModelState.Error -> model.put("status", "error").put("name", "").put("message", modelState.message)
     }
     val settingsJson = JSONObject()
-        .put("nCtx", webSettings.nCtx)
-        .put("nThreads", webSettings.nThreads)
-        .put("nThreadsBatch", webSettings.nThreadsBatch)
-        .put("maxThreads", Runtime.getRuntime().availableProcessors().coerceAtLeast(webSettings.nThreads))
+        .put("nCtx", settings.nCtx)
+        .put("nThreads", settings.nThreads)
+        .put("nThreadsBatch", settings.nThreadsBatch)
+        .put("maxThreads", Runtime.getRuntime().availableProcessors().coerceAtLeast(settings.nThreads))
         .put("defaultThreads", InferenceSettings.defaultThreads())
-        .put("flashAttn", webSettings.flashAttn)
-        .put("effectiveFlashAttn", webSettings.effectiveFlashAttn)
-        .put("kvTypeK", webSettings.kvTypeK.code)
-        .put("kvTypeV", webSettings.kvTypeV.code)
-        .put("useMmap", webSettings.useMmap)
-        .put("useMlock", webSettings.useMlock)
-        .put("reuseCache", webSettings.reuseCache)
+        .put("flashAttn", settings.flashAttn)
+        .put("effectiveFlashAttn", settings.effectiveFlashAttn)
+        .put("kvTypeK", settings.kvTypeK.code)
+        .put("kvTypeV", settings.kvTypeV.code)
+        .put("useMmap", settings.useMmap)
+        .put("useMlock", settings.useMlock)
+        .put("reuseCache", settings.reuseCache)
         .put("modelLoaded", modelState is ModelState.Loaded)
     val statsJson = JSONObject()
     if (stats != null) {
