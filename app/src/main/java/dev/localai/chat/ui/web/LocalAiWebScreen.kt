@@ -14,9 +14,7 @@ import android.webkit.WebViewClient
 import android.widget.EditText
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -52,7 +50,7 @@ fun LocalAiWebScreen(
     val context = LocalContext.current
     val messages by viewModel.messages.collectAsStateWithLifecycle()
     val modelState by viewModel.modelState.collectAsStateWithLifecycle()
-    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val settings by viewModel.webSettings.collectAsStateWithLifecycle()
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
     val generationState by viewModel.generationState.collectAsStateWithLifecycle()
@@ -80,7 +78,7 @@ fun LocalAiWebScreen(
                 "unloadModel" -> viewModel.unloadModel()
                 "toggleThinking" -> viewModel.toggleThinkingVisibility(command.optLong("id"))
                 "applySettings" -> {
-                    val current = viewModel.settings.value
+                    val current = viewModel.webSettings.value
                     val values = command.optJSONObject("settings") ?: JSONObject()
                     val kvK = KvCacheType.fromCode(values.optInt("kvTypeK", current.kvTypeK.code))
                     val kvV = KvCacheType.fromCode(values.optInt("kvTypeV", current.kvTypeV.code))
@@ -179,22 +177,22 @@ fun LocalAiWebScreen(
 
     AndroidView(
         modifier = modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.systemBars),
+            .fillMaxSize(),
         factory = { viewContext ->
             WebView(viewContext).apply {
                 setBackgroundColor(android.graphics.Color.rgb(9, 10, 12))
                 overScrollMode = View.OVER_SCROLL_NEVER
                 isVerticalScrollBarEnabled = false
                 isHorizontalScrollBarEnabled = false
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.allowFileAccess = true
-                settings.allowContentAccess = false
-                settings.javaScriptCanOpenWindowsAutomatically = false
-                settings.setSupportMultipleWindows(false)
-                settings.allowFileAccessFromFileURLs = false
-                settings.allowUniversalAccessFromFileURLs = false
+                val webSettings = this.settings
+                webSettings.javaScriptEnabled = true
+                webSettings.domStorageEnabled = true
+                webSettings.allowFileAccess = true
+                webSettings.allowContentAccess = false
+                webSettings.javaScriptCanOpenWindowsAutomatically = false
+                webSettings.setSupportMultipleWindows(false)
+                webSettings.allowFileAccessFromFileURLs = false
+                webSettings.allowUniversalAccessFromFileURLs = false
                 webChromeClient = object : WebChromeClient() {
                     override fun onJsConfirm(
                         view: WebView?,
@@ -278,18 +276,18 @@ private fun createStateJson(
         is ModelState.Error -> model.put("status", "error").put("name", "").put("message", modelState.message)
     }
     val settingsJson = JSONObject()
-        .put("nCtx", settings.nCtx)
-        .put("nThreads", settings.nThreads)
-        .put("nThreadsBatch", settings.nThreadsBatch)
-        .put("maxThreads", Runtime.getRuntime().availableProcessors().coerceAtLeast(settings.nThreads))
+        .put("nCtx", webSettings.nCtx)
+        .put("nThreads", webSettings.nThreads)
+        .put("nThreadsBatch", webSettings.nThreadsBatch)
+        .put("maxThreads", Runtime.getRuntime().availableProcessors().coerceAtLeast(webSettings.nThreads))
         .put("defaultThreads", InferenceSettings.defaultThreads())
-        .put("flashAttn", settings.flashAttn)
-        .put("effectiveFlashAttn", settings.effectiveFlashAttn)
-        .put("kvTypeK", settings.kvTypeK.code)
-        .put("kvTypeV", settings.kvTypeV.code)
-        .put("useMmap", settings.useMmap)
-        .put("useMlock", settings.useMlock)
-        .put("reuseCache", settings.reuseCache)
+        .put("flashAttn", webSettings.flashAttn)
+        .put("effectiveFlashAttn", webSettings.effectiveFlashAttn)
+        .put("kvTypeK", webSettings.kvTypeK.code)
+        .put("kvTypeV", webSettings.kvTypeV.code)
+        .put("useMmap", webSettings.useMmap)
+        .put("useMlock", webSettings.useMlock)
+        .put("reuseCache", webSettings.reuseCache)
         .put("modelLoaded", modelState is ModelState.Loaded)
     val statsJson = JSONObject()
     if (stats != null) {
