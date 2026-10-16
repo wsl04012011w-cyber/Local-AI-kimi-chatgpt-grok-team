@@ -32,8 +32,14 @@ object AppLogger {
         synchronized(this) {
             if (logFile != null) return
 
-            // context.dataDir maps to /data/data/<package> on the primary Android user.
-            val directory = File(context.dataDir, "logs")
+            // Prefer the literal /data/data path on Android's primary user (UID range 0).
+            // On secondary profiles, use dataDir because each user has a distinct app sandbox.
+            val appDataDirectory = if (context.applicationInfo.uid / 100000 == 0) {
+                File("/data/data/${context.packageName}")
+            } else {
+                context.dataDir
+            }
+            val directory = File(appDataDirectory, "logs")
             if (!directory.exists() && !directory.mkdirs()) {
                 Log.e(TAG, "Não foi possível criar a pasta de logs: ${directory.absolutePath}")
                 return
