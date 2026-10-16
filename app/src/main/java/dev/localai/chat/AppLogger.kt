@@ -1,7 +1,10 @@
 package dev.localai.chat
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.widget.Toast
 import java.io.File
 import java.io.FileOutputStream
 import java.io.PrintWriter
@@ -10,6 +13,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Crash-first diagnostics saved in the app-private data directory:
@@ -24,12 +28,20 @@ object AppLogger {
     private const val MAX_HISTORY_BYTES = 512 * 1024
 
     @Volatile private var logFile: File? = null
+    @Volatile private var appContext: Context? = null
     @Volatile private var previousHandler: Thread.UncaughtExceptionHandler? = null
+    private val locationToastShown = AtomicBoolean(false)
+    private val failureToastShown = AtomicBoolean(false)
+
+    /** Absolute path of the file that is currently receiving diagnostics. */
+    val logFilePath: String
+        get() = logFile?.absolutePath ?: "arquivo de log ainda não inicializado"
 
     fun initialize(context: Context) {
         if (logFile != null) return
         synchronized(this) {
             if (logFile != null) return
+            appContext = context.applicationContext
 
             // Prefer the literal /data/data path on Android's primary user (UID range 0).
             // On secondary profiles, use dataDir because each user has a distinct app sandbox.
@@ -38,12 +50,34 @@ object AppLogger {
             } else {
                 context.dataDir
             }
-            val directory = File(appDataDirectory, "logs")
-            if (!directory.exists() && !directory.mkdirs()) {
-                Log.e(TAG, "Não foi possível criar a pasta de logs: ${directory.absolutePath}")
+            val candidates = listOfNotNull(
+                File(appDataDirectory, "logs"),
+                File(context.filesDir, "logs"),
+                context.getExternalFilesDir("logs"),
+            ).distinctBy { it.absolutePath }
+            var preparedFile: File? = null
+            var lastFailure: Throwable? = null
+            for (directory in candidates) {
+                try {
+                    if (!directory.exists() && !directory.mkdirs()) {
+                        throw java.io.IOException("Não foi possível criar ${directory.absolutePath}")
+                    }
+                    val candidate = File(directory, "localai-diagnostics.txt")
+                    FileOutputStream(candidate, true).use { it.flush() }
+                    preparedFile = candidate
+                    break
+                } catch (failure: Throwable) {
+                    lastFailure = failure
+                    Log.e(TAG, "Diretório de logs indisponível: ${directory.absolutePath}", failure)
+                }
+            }
+            if (preparedFile == null) {
+                val reason = "Não foi possível preparar arquivo de diagnóstico. ${lastFailure?.javaClass?.simpleName}: ${lastFailure?.message}"
+                Log.e(TAG, reason, lastFailure)
+                showFailureToast(reason)
                 return
             }
-            logFile = File(directory, "localai-diagnostics.txt")
+            logFile = preparedFile
             previousHandler = Thread.getDefaultUncaughtExceptionHandler()
             Thread.setDefaultUncaughtExceptionHandler { thread, error ->
                 // Synchronous writes are intentional: persist fatal data before process death.
@@ -179,9 +213,12 @@ object AppLogger {
                     ) stream.fd.sync()
                 }
             } catch (error: Throwable) {
-                Log.e(TAG, "Falha ao gravar linha de logcat", error)
+                Log.e(TAG, "Falha ao gravar linha de logcat em ${target.absolutePath}", error)
+                showFailureToast("Falha ao salvar diagnóstico em ${target.absolutePath}: ${error.message}")
+                return
             }
         }
+        showLocationToastOnce(target)
     }
 
     private fun write(
@@ -211,8 +248,31 @@ object AppLogger {
                     if (forceSync || level == "ERROR" || level == "FATAL") stream.fd.sync()
                 }
             } catch (loggingFailure: Throwable) {
-                Log.e(TAG, "Falha ao gravar log no armazenamento privado", loggingFailure)
+                Log.e(TAG, "Falha ao gravar log no armazenamento privado: ${target.absolutePath}", loggingFailure)
+                showFailureToast("Falha ao salvar diagnóstico em ${target.absolutePath}: ${loggingFailure.message}")
+                return
             }
+        }
+        showLocationToastOnce(target)
+    }
+
+    private fun showLocationToastOnce(target: File) {
+        if (!locationToastShown.compareAndSet(false, true)) return
+        val context = appContext ?: return
+        Handler(Looper.getMainLooper()).postDelayed({
+            Toast.makeText(
+                context,
+                "Log de diagnóstico salvo em:\\n${target.absolutePath}",
+                Toast.LENGTH_LONG,
+            ).show()
+        }, 900L)
+    }
+
+    private fun showFailureToast(message: String) {
+        if (!failureToastShown.compareAndSet(false, true)) return
+        val context = appContext ?: return
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
         }
     }
 
