@@ -182,6 +182,7 @@ fun LocalAiWebScreen(
             .fillMaxSize(),
         factory = { viewContext ->
             WebView(viewContext).apply {
+                var fallbackAlreadyShown = false
                 setBackgroundColor(android.graphics.Color.rgb(9, 10, 12))
                 overScrollMode = View.OVER_SCROLL_NEVER
                 isVerticalScrollBarEnabled = false
@@ -276,6 +277,10 @@ fun LocalAiWebScreen(
                             "WebView",
                             "Erro ao carregar recurso: url=${request.url}, mainFrame=${request.isForMainFrame}, code=${error.errorCode}, description=${error.description}"
                         )
+                        if (request.isForMainFrame && !fallbackAlreadyShown) {
+                            fallbackAlreadyShown = true
+                            showWebViewDiagnosticFallback(view, "Falha ao carregar a interface web (código ${error.errorCode}: ${error.description}).")
+                        }
                     }
 
                     override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
@@ -284,15 +289,58 @@ fun LocalAiWebScreen(
                             "Processo do renderer terminou: crashed=${detail.didCrash()}, priority=${detail.rendererPriorityAtExit()}"
                         )
                         pageReady = false
+                        showWebViewDiagnosticFallback(view, "O processo de renderização do WebView foi encerrado. Reinicie o aplicativo se a tela não voltar.")
                         return true
                     }
                 }
                 addJavascriptInterface(bridge, "LocalAIAndroid")
                 loadUrl("file:///android_asset/index.html")
+                postDelayed({
+                    if (!pageReady && !fallbackAlreadyShown) {
+                        fallbackAlreadyShown = true
+                        AppLogger.error("WebView", "Timeout: a interface não terminou de carregar em 8 segundos.")
+                        showWebViewDiagnosticFallback(this, "A interface não terminou de carregar em 8 segundos.")
+                    }
+                }, 8000L)
                 webView = this
             }
         },
     )
+}
+
+
+private fun showWebViewDiagnosticFallback(view: WebView, reason: String) {
+    val safeReason = android.text.TextUtils.htmlEncode(reason)
+    val safePath = android.text.TextUtils.htmlEncode(AppLogger.logFilePath)
+    view.post {
+        val html = """
+            <!doctype html>
+            <html lang="pt-BR">
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <meta charset="utf-8">
+              <style>
+                body{margin:0;background:#090a0c;color:#f4f4f5;font:16px sans-serif;padding:28px;line-height:1.5}
+                main{max-width:620px;margin:8vh auto;border:1px solid #3b3d45;border-radius:18px;padding:24px;background:#15161a}
+                h1{font-size:22px;margin-top:0} .reason{color:#ffb4ab;overflow-wrap:anywhere}
+                code{display:block;background:#090a0c;padding:12px;border-radius:8px;overflow-wrap:anywhere;white-space:pre-wrap}
+                p{color:#c4c6ce}
+              </style>
+            </head>
+            <body><main>
+              <h1>A interface do Local AI não carregou</h1>
+              <p class="reason">$safeReason</p>
+              <p>O diagnóstico foi configurado para ser salvo neste arquivo:</p>
+              <code>$safePath</code>
+              <p>Procure o arquivo acima com o gerenciador de arquivos com acesso apropriado, ou use Shizuku/root. O caminho fica dentro dos dados privados do aplicativo.</p>
+            </main></body></html>
+        """.trimIndent()
+        try {
+            view.loadDataWithBaseURL("about:blank", html, "text/html", "UTF-8", null)
+        } catch (error: Throwable) {
+            AppLogger.error("WebView", "Falha ao mostrar tela alternativa de diagnóstico", error)
+        }
+    }
 }
 
 private class LocalAiJavascriptBridge {
