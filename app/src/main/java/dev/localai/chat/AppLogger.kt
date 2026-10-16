@@ -1,7 +1,6 @@
 package dev.localai.chat
 
 import android.content.Context
-import android.os.Process
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
@@ -52,7 +51,7 @@ object AppLogger {
                 val delegate = previousHandler
                 if (delegate != null) delegate.uncaughtException(thread, error)
                 else {
-                    Process.killProcess(Process.myPid())
+                    android.os.Process.killProcess(android.os.Process.myPid())
                     kotlin.system.exitProcess(10)
                 }
             }
