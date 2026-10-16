@@ -260,8 +260,29 @@ fun LocalAiWebScreen(
                         super.onPageFinished(view, url)
                         AppLogger.info("WebView", "Carregamento finalizado: ${url}")
                         if (url.startsWith("file:///android_asset/")) {
-                            pageReady = true
-                            AppLogger.info("WebView", "Página local pronta para receber estado")
+                            // onPageFinished sozinho não detecta erro de sintaxe/execução JavaScript.
+                            // Valida se o bootstrap realmente criou a API que o Compose usa.
+                            view.evaluateJavascript(
+                                "(typeof window.LocalAI !== 'undefined' && typeof window.LocalAI.setState === 'function')"
+                            ) { result ->
+                                if (result == "true") {
+                                    pageReady = true
+                                    AppLogger.info("WebView", "Página local e bootstrap JavaScript prontos")
+                                } else {
+                                    pageReady = false
+                                    AppLogger.error(
+                                        "WebView",
+                                        "A página terminou de carregar, mas window.LocalAI não foi inicializado (resultado JS: ${result})"
+                                    )
+                                    if (!fallbackAlreadyShown) {
+                                        fallbackAlreadyShown = true
+                                        showWebViewDiagnosticFallback(
+                                            view,
+                                            "O HTML foi aberto, mas o JavaScript da interface não inicializou. Consulte o arquivo de diagnóstico."
+                                        )
+                                    }
+                                }
+                            }
                         } else {
                             AppLogger.warn("WebView", "Página finalizada fora do asset local: ${url}")
                         }
