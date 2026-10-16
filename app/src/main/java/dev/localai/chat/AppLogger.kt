@@ -83,10 +83,10 @@ object AppLogger {
         Thread({
             var child: Process? = null
             try {
-                child = ProcessBuilder(
+                val process: Process = ProcessBuilder(
                     "logcat", "-d", "-v", "threadtime", "--uid=$uid",
                 ).redirectErrorStream(true).start()
-                val process = child
+                child = process
                 Thread({
                     try {
                         Thread.sleep(2200)
@@ -135,16 +135,17 @@ object AppLogger {
         Thread({
             var child: Process? = null
             try {
-                child = ProcessBuilder(
+                val process: Process = ProcessBuilder(
                     "logcat", "-v", "threadtime", "--uid=$uid",
                 ).redirectErrorStream(true).start()
+                child = process
                 appendRaw("LOGCAT-LIVE", "Captura ao vivo iniciada para UID $uid")
-                child.inputStream.bufferedReader().useLines { lines ->
+                process.inputStream.bufferedReader().useLines { lines ->
                     lines.forEach { line ->
                         if (!line.contains(TAG)) appendRaw("LOGCAT-LIVE", line)
                     }
                 }
-                appendRaw("LOGCAT-LIVE", "Fluxo logcat encerrado; exit=${child.waitFor()}")
+                appendRaw("LOGCAT-LIVE", "Fluxo logcat encerrado; exit=${process.waitFor()}")
             } catch (error: Throwable) {
                 appendRaw(
                     "LOGCAT-LIVE",
