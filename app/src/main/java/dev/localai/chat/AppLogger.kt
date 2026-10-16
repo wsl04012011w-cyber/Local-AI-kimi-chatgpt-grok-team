@@ -262,7 +262,7 @@ object AppLogger {
         Handler(Looper.getMainLooper()).postDelayed({
             Toast.makeText(
                 context,
-                "Log de diagnóstico salvo em:\\n${target.absolutePath}",
+                "Log de diagnóstico salvo em:\n${target.absolutePath}",
                 Toast.LENGTH_LONG,
             ).show()
         }, 900L)
