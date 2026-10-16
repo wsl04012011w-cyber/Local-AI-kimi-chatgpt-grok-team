@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.localai.chat.AppLogger
 import dev.localai.chat.llm.GenerationStats
 import dev.localai.chat.llm.ImportState
 import dev.localai.chat.llm.InferenceSettings
@@ -98,7 +99,8 @@ fun LocalAiWebScreen(
                     viewModel.applySettings(updated)
                 }
             }
-        }.onFailure {
+        }.onFailure { error ->
+            AppLogger.error("WebBridge", "Falha ao processar comando JavaScript", error)
             webView?.post {
                 webView?.evaluateJavascript(
                     "window.LocalAI && window.LocalAI.showToast('Não foi possível executar a ação.');",
@@ -193,7 +195,18 @@ fun LocalAiWebScreen(
                 webSettings.setSupportMultipleWindows(false)
                 webSettings.allowFileAccessFromFileURLs = false
                 webSettings.allowUniversalAccessFromFileURLs = false
+                AppLogger.info("WebView", "Criando WebView e carregando asset local")
                 webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(message: android.webkit.ConsoleMessage): Boolean {
+                        val details = "JS ${message.messageLevel()} em ${message.sourceId()}:${message.lineNumber()} — ${message.message()}"
+                        when (message.messageLevel()) {
+                            android.webkit.ConsoleMessage.MessageLevel.ERROR -> AppLogger.error("WebView-JS", details)
+                            android.webkit.ConsoleMessage.MessageLevel.WARNING -> AppLogger.warn("WebView-JS", details)
+                            else -> AppLogger.info("WebView-JS", details)
+                        }
+                        return true
+                    }
+
                     override fun onJsConfirm(
                         view: WebView?,
                         url: String?,
@@ -237,9 +250,41 @@ fun LocalAiWebScreen(
                     override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean =
                         !url.startsWith("file:///android_asset/")
 
+                    override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        AppLogger.info("WebView", "Carregamento iniciado: ${url}")
+                    }
+
                     override fun onPageFinished(view: WebView, url: String) {
                         super.onPageFinished(view, url)
-                        if (url.startsWith("file:///android_asset/")) pageReady = true
+                        AppLogger.info("WebView", "Carregamento finalizado: ${url}")
+                        if (url.startsWith("file:///android_asset/")) {
+                            pageReady = true
+                            AppLogger.info("WebView", "Página local pronta para receber estado")
+                        } else {
+                            AppLogger.warn("WebView", "Página finalizada fora do asset local: ${url}")
+                        }
+                    }
+
+                    override fun onReceivedError(
+                        view: WebView,
+                        request: WebResourceRequest,
+                        error: android.webkit.WebResourceError,
+                    ) {
+                        super.onReceivedError(view, request, error)
+                        AppLogger.error(
+                            "WebView",
+                            "Erro ao carregar recurso: url=${request.url}, mainFrame=${request.isForMainFrame}, code=${error.errorCode}, description=${error.description}"
+                        )
+                    }
+
+                    override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                        AppLogger.error(
+                            "WebView",
+                            "Processo do renderer terminou: crashed=${detail.didCrash()}, priority=${detail.rendererPriorityAtExit()}"
+                        )
+                        pageReady = false
+                        return true
                     }
                 }
                 addJavascriptInterface(bridge, "LocalAIAndroid")
