@@ -10,7 +10,11 @@ plugins {
     id("com.facebook.react.settings")
 }
 extensions.configure<com.facebook.react.ReactSettingsExtension> {
-    autolinkLibrariesFromCommand()
+    // Call the already-installed CLI entry point directly. This avoids npx
+    // package resolution differences inside Gradle's settings process.
+    autolinkLibrariesFromCommand(
+        listOf("node", "node_modules/@react-native-community/cli/build/bin.js", "config")
+    )
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
