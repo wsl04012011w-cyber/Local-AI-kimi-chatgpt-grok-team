@@ -10,10 +10,10 @@ plugins {
     id("com.facebook.react.settings")
 }
 extensions.configure<com.facebook.react.ReactSettingsExtension> {
-    // Call the already-installed CLI entry point directly. This avoids npx
-    // package resolution differences inside Gradle's settings process.
+    // Use the React Native package's CLI shim, which delegates to the pinned
+    // @react-native-community/cli installed by npm.
     autolinkLibrariesFromCommand(
-        listOf("node", "node_modules/@react-native-community/cli/build/bin.js", "config")
+        listOf("node", "node_modules/react-native/cli.js", "config")
     )
 }
 dependencyResolutionManagement {
