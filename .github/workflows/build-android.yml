@@ -90,7 +90,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx @react-native-community/cli config > "$RUNNER_TEMP/react-native-config.json"
+          # Exercise the exact CLI entry point Gradle will spawn so failures
+          # are reported here with the CLI's stderr, not hidden in settings.
+          node node_modules/react-native/cli.js config > "$RUNNER_TEMP/react-native-config.json"
           node -e 'const c = require(process.env.RUNNER_TEMP + "/react-native-config.json"); if (!c.project?.android?.sourceDir) { throw new Error("React Native CLI did not detect the Android project sourceDir"); } console.log("Android sourceDir:", c.project.android.sourceDir); console.log("Autolinked dependencies:", Object.keys(c.dependencies || {}));'
 
       - name: Build release APK
