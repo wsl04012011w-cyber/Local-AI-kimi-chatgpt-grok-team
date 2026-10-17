@@ -111,8 +111,9 @@ export default function App() {
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
   useEffect(() => {
-    const stateSubscription = emitter.addListener('LocalAIState', (next: NativeState) => {
-      setState(next);
+    const stateSubscription = emitter.addListener('LocalAIState', (next: Object) => {
+      // React Native 0.87's strict event API types payloads as Object.
+      setState(next as NativeState);
     });
     const noticeSubscription = emitter.addListener(
       'LocalAINotice',
