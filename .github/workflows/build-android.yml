@@ -86,6 +86,13 @@ jobs:
       - name: TypeScript check
         run: npm run typecheck
 
+      - name: Validate React Native autolinking configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx @react-native-community/cli config > "$RUNNER_TEMP/react-native-config.json"
+          node -e 'const c = require(process.env.RUNNER_TEMP + "/react-native-config.json"); if (!c.project?.android?.sourceDir) { throw new Error("React Native CLI did not detect the Android project sourceDir"); } console.log("Android sourceDir:", c.project.android.sourceDir); console.log("Autolinked dependencies:", Object.keys(c.dependencies || {}));'
+
       - name: Build release APK
         run: gradle --no-daemon --stacktrace :app:assembleRelease
 
