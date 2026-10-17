@@ -1,132 +1,66 @@
-# Local AI 🤖📱
+# Local AI — chat offline para Android
 
-Chat de IA **100% offline** no Android, com inferência local via [llama.cpp](https://github.com/ggml-org/llama.cpp).
-Sem permissão de INTERNET — seus dados nunca saem do aparelho.
+O Local AI e um chat de IA que executa inferencia no aparelho usando llama.cpp e modelos GGUF locais. A interface foi migrada de WebView para React Native com TypeScript; o motor de inferencia continua nativo em Kotlin/JNI.
 
-## Stack
+## Stack e versoes
 
 | Camada | Tecnologia |
 |---|---|
-| UI | Jetpack Compose + Material 3 (tema dark próprio) |
-| Arquitetura | MVVM + Clean Architecture + Hilt (DI) |
-| Persistência | Room (histórico do chat) |
-| Inferência | llama.cpp via JNI (CPU, streaming de tokens) |
-| CI | GitHub Actions (NDK + CMake + APK) |
+| Interface | React Native 0.87.1 + TypeScript 6.0.3 |
+| React | 19.2.3 |
+| Runtime JS | Hermes |
+| Integração Android | Kotlin + Native Module React Native |
+| Motor de inferencia | llama.cpp v0.3.0 via JNI/C++ |
+| Persistencia | Room + SharedPreferences |
+| Injeção de dependencias | Hilt |
+| JDK | 17 |
+| Gradle | 9.4.1 |
+| Android Gradle Plugin | 9.2.1 |
+| Kotlin | 2.2.10 |
+| Android SDK | compileSdk 37 / targetSdk 36 |
+| NDK | 27.1.12297006 |
+| CMake | 3.22.1 |
 
-## Estrutura
+As principais dependencias JavaScript estao fixadas em versoes exatas no `package.json`. O build de CI usa Node.js 22, compativel com os requisitos de React Native 0.87.
 
-```
-app/src/main/
-├── cpp/
-│   ├── CMakeLists.txt        # build nativo: ggml + llama + JNI
-│   └── llama-jni.cpp         # ponte JNI (load/generate/cancel)
-├── java/dev/localai/chat/
-│   ├── MainActivity.kt
-│   ├── llm/                  # LlamaBridge, InferenceEngine, TokenStreamProcessor
-│   ├── data/                 # Room: entities, dao, repository
-│   ├── di/                   # módulo Hilt
-│   └── ui/
-│       ├── theme/            # Material 3 (dynamic color)
-│       └── chat/             # ChatScreen, ViewModel, componentes
-└── res/
-```
+## Arquitetura
 
-O llama.cpp **não fica no repositório**: o workflow do GitHub Actions clona a tag
-pinada (`v0.3.0`) em `app/src/main/cpp/llama.cpp` antes do build (ver `.github/workflows/build.yml`).
+- `App.tsx`: chat React Native com mensagens, estado de streaming, painel de raciocinio, seletor GGUF e painel de desempenho.
+- `LocalAiReactModule.kt`: bridge tipada entre TypeScript e o ViewModel Kotlin.
+- `ChatViewModel.kt`: segue responsavel pela geração, historico, cancelamento, importacao do modelo e estado da inferencia.
+- Room e SharedPreferences mantem o historico de conversa e as configuracoes.
+- `app/src/main/cpp/llama-jni.cpp`: ponte JNI para o motor llama.cpp.
+- `app/src/main/cpp/CMakeLists.txt`: integra os alvos C++ do React Native e a biblioteca JNI existente.
+- `app/src/main/assets/index.html`: interface antiga em WebView, mantida temporariamente como referencia, mas nao e carregada pela Activity principal.
 
-## Build local
+A interface e executada em views nativas via React Native; nao usa WebView. O uso de RAM depende tanto do Hermes/UI como do modelo GGUF e dos parametros de inferencia, portanto a migracao nao garante sozinha reducao de memoria.
 
-Requisitos: JDK 17, Android Studio com SDK 35 + NDK 27.
+## Desenvolvimento local
 
-```bash
-# 1. baixar as fontes do llama.cpp na versão pinada
-git clone --depth 1 --branch v0.3.0 https://github.com/ggml-org/llama.cpp app/src/main/cpp/llama.cpp
+Requisitos: Node.js >= 22.13, JDK 17, Android SDK platform 37, NDK 27.1.12297006 e CMake 3.22.1.
 
-# 2. abrir no Android Studio e rodar, ou:
-./gradlew :app:assembleDebug
-```
+1. Instale as dependencias JavaScript: `npm install`.
+2. Baixe a versao fixada do llama.cpp:
+   `git clone --depth 1 --branch v0.3.0 https://github.com/ggml-org/llama.cpp app/src/main/cpp/llama.cpp`
+3. Inicie o Metro em um terminal: `npm start`.
+4. Compile em outro terminal: `gradle :app:assembleDebug` ou `gradle :app:assembleRelease`.
 
-## Build no GitHub (CI)
+O build de release empacota o bundle JavaScript; nao depende do Metro em execucao. A permissao INTERNET para conectar ao Metro fica no manifest de debug; o manifest principal de release nao pede acesso a internet.
 
-Todo push em `main` roda o workflow:
-1. Instala JDK 17 + Android SDK + NDK 27 + CMake
-2. Clona o llama.cpp (tag pinada, com fallback pra master)
-3. Compila as libs nativas (arm64-v8a, x86_64) via CMake
-4. Gera o APK de release e sobe como artifact
+## Build no GitHub Actions
 
-## Como usar
+O workflow `.github/workflows/build-android.yml` configura Node/JDK/Gradle/Android SDK, instala dependencias, baixa a tag v0.3.0 do llama.cpp, verifica os tipos TypeScript, compila e assina o APK de release e publica o artefato `local-ai-release-signed-apk`.
 
-1. Baixe um modelo **.gguf** pequeno (ex.: Qwen2.5-0.5B-Instruct, TinyLlama) no aparelho
-2. Abra o app → toque no chip "Sem modelo" → selecione o .gguf
-3. Espere carregar e converse. Streaming de tokens em tempo real, botão de parar.
+## Usar o app
 
-## Changelog v0.3.0
+1. Baixe um modelo GGUF compativel com o aparelho.
+2. Abra o Local AI e toque em **Abrir GGUF**.
+3. Depois de carregar, envie mensagens. A interface recebe as atualizacoes conforme os tokens chegam e permite parar a geracao.
+4. Em **Desempenho**, ajuste o contexto, threads, KV cache, flash attention, mmap, mlock e reutilizacao de cache. Mudar os parametros recarrega o modelo.
 
-1. **Scroll automático corrigido** — antes, `animateScrollToItem(lastIndex)` alinhava o *topo* da última bolha ao topo da tela (o chat "subia" em respostas longas). Agora há um item-âncora no fim da lista e o app segue o final real da resposta. O acompanhamento só é interrompido quando o usuário rola para cima; volta ao chegar no fim, ao tocar no botão ↓ ou ao enviar mensagem.
-2. **Visual dark profissional** — paleta graphite + acento índigo, tema sempre escuro (sem dynamic color), assistente em texto corrido com avatar, bolha do usuário em gradiente, input em "pílula", chip de status com indicador de cor, estado vazio com sugestões, blocos de código, **negrito**, `código inline`, listas e títulos.
-3. **Desempenho do modelo** (ícone ⚙ no topo): flash attention, KV cache K/V em F16/Q8_0/Q5_1/Q5_0/Q4_1/Q4_0, contexto (2048/4096/8192), threads, mmap, mlock e reaproveitamento do KV cache entre mensagens (só o trecho novo do prompt é processado). V quantizado liga a flash attention automaticamente (exigência do llama.cpp). Barra de status mostra ctx, FA, KV, threads, tokens reaproveitados e tok/s.
-4. **Caixa de raciocínio persistente** — o raciocínio agora é salvo no banco (coluna `thinking`); a caixa aparece expandida enquanto o modelo pensa e fica minimizada no chat depois, com toque para expandir.
-5. **Design geral** — novo tema, tipografia, formas e componentes (ver item 2).
+## Notas
 
-Outras correções: o modelo é descarregado antes de copiar um novo arquivo por cima (com mmap, sobrescrever o arquivo mapeado pode derrubar o app); o chip mostra o nome original do arquivo .gguf.
-
-> **Atenção:** o banco subiu para a versão 2 e usa `fallbackToDestructiveMigration`, então o histórico de conversas existente é apagado na primeira abertura.
-
-## Changelog v0.2.0
-
-### Correções e melhorias
-
-1. **Edge-to-edge / WindowInsets**
-   - Tratamento correto de status bar, navigation bar e teclado
-   - TopAppBar e input bar não ficam mais escondidos atrás das system bars
-
-2. **Filtro de tokens especiais**
-   - `TokenStreamProcessor` remove marcadores internos (`<|im_start|>`, `<|im_end|>`, etc.)
-   - Processamento incremental (não espera a resposta completa)
-   - Lida com marcadores fragmentados entre chunks
-
-3. **Detecção de thinking**
-   - Reconhece `<think>`, `<thinking>` e variantes
-   - Separa conteúdo de raciocínio da resposta final
-
-4. **Faixa visual de thinking**
-   - Painel compacto com indicador "Raciocinando…"
-   - Expandir/recolher o conteúdo de thinking
-   - Não cria painel vazio quando o modelo não usa thinking
-
-5. **Scroll automático inteligente**
-   - Acompanha a resposta só se o usuário estiver no final
-   - Respeita quando o usuário rola para ler mensagens antigas
-   - FAB discreto para voltar ao final
-
-6. **Cancelamento confiável**
-   - Flag atômica no C++ + `awaitClose` no Flow
-   - Interrompe o loop nativo de verdade
-   - Preserva texto parcial e permite nova mensagem logo em seguida
-
-## Changelog v0.2.1 (Qwen/Gemma) — detalhes em CORRECOES.md
-
-- Template de conversa por modelo (embutido no GGUF; fallback Gemma/ChatML). Fim do ChatML fixo.
-- Geracao para no fim de turno (`llama_vocab_is_eog`), nao so no EOS (causa da resposta "contaminada" do Gemma).
-- Prompt tokenizado com marcadores especiais interpretados (`parse_special=true`).
-- JNI: strings via UTF-16 (token com UTF-8 incompleto/emoji nao passa mais por `NewStringUTF`).
-- Erros nativos viram excecao com etapa + codigo (logcat tags `LocalAI-JNI`, `LocalAI-Engine`).
-- Removida a limpeza por regex de "user"/"assistant" na saida.
-- Corrigido import quebrado em `ChatViewModel.kt` (`\n` literal).
-
-## Notas de robustez
-
-- **Cancelamento cooperativo**: cancelar o Flow de geração sinaliza o loop nativo e persiste o texto parcial
-- **Threading**: inferência sempre em `Dispatchers.IO`; UI nunca bloqueada
-- **JNI defensivo**: checagem de null em modelo/contexto, tratamento de falha de tokenização, flag atômica
-- **ProGuard**: métodos nativos preservados (`-keepclassmembers ... native <methods>`)
-
-## Roadmap
-
-- [x] Templates de chat por modelo (GGUF embutido → Gemma/ChatML; v0.2.1). Falta: Llama-3, Mistral…
-- [ ] Download de modelos via Hugging Face dentro do app
-- [ ] Backend Vulkan (GPU) no llama.cpp
-- [ ] Multi-conversa + renomear/apagar chats
-- [x] Flash attention, KV cache quantizado, mmap/mlock, reuso de cache (v0.3.0)
-- [ ] Ajuste de temperatura/top-k/top-p na UI
-- [ ] Exportar conversa
+- Modelos grandes podem precisar de bastante RAM; comece com um GGUF pequeno e quantizado.
+- Velocidade e consumo dependem do modelo e do aparelho.
+- O APK nao inclui um modelo GGUF; o usuario seleciona o arquivo no dispositivo.
+- O workflow atual usa uma chave de assinatura efemera por build. Para lancamentos com atualizacao in-place, configure uma chave de release persistente e protegida.
