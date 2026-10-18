@@ -94,6 +94,8 @@ class ChatViewModel @Inject constructor(
     private var sendJob: Job? = null          // fase de preparo (inserts + prompt)
     private var generationJob: Job? = null    // fase de geracao nativa
     private var currentAssistantId: Long = -1L
+    private var clearRequested = false
+    private var queuedMessage: String? = null
     private val processor = TokenStreamProcessor()
 
     init {
@@ -157,7 +159,13 @@ class ChatViewModel @Inject constructor(
 
     fun send(text: String) {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || _isGenerating.value) return
+        if (trimmed.isEmpty()) return
+        if (_isGenerating.value) {
+            queuedMessage = trimmed
+            stop()
+            return
+        }
+        if (clearRequested) return
         if (engine.modelState.value !is ModelState.Loaded) {
             viewModelScope.launch { _events.emit("Carregue um modelo primeiro.") }
             return
@@ -277,6 +285,18 @@ class ChatViewModel @Inject constructor(
                     }
                     generationJob = null
                     currentAssistantId = -1L
+                    if (clearRequested) {
+                        clearRequested = false
+                        queuedMessage = null
+                        repository.clear()
+                        expandedThinking.clear()
+                        _messages.value = emptyList()
+                        _generationState.value = GenerationState.Idle
+                    } else {
+                        val queued = queuedMessage
+                        queuedMessage = null
+                        if (queued != null) send(queued)
+                    }
                 }
             }
         }
@@ -299,12 +319,22 @@ class ChatViewModel @Inject constructor(
     }
 
     fun clearChat() {
+        queuedMessage = null
+        clearRequested = true
+        val preparing = sendJob
+        val generating = generationJob
         stop()
         viewModelScope.launch {
-            repository.clear()
-            expandedThinking.clear()
-            _messages.value = emptyList()
-            _generationState.value = GenerationState.Idle
+            preparing?.join()
+            generating?.join()
+            // Wait until cancellation has persisted its partial response before clearing Room.
+            if (clearRequested && !_isGenerating.value) {
+                clearRequested = false
+                repository.clear()
+                expandedThinking.clear()
+                _messages.value = emptyList()
+                _generationState.value = GenerationState.Idle
+            }
         }
     }
 
