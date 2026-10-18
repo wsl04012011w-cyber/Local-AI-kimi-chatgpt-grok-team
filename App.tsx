@@ -112,7 +112,7 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
-  const thinkingScrollRef = useRef<ScrollView>(null);
+  const thinkingScrollRef = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const liveThinking = [...state.messages].reverse().find(message => message.role === 'assistant' && message.isThinking);
   useEffect(() => {
     if (liveThinking) thinkingScrollRef.current?.scrollToEnd({animated: true});
