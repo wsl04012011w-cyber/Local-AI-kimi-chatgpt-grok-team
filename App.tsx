@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
+import {Brain, ChevronDown, ChevronUp, Plus, Settings, X, Send, Square} from 'lucide-react-native';
 import ChatMarkdown from './ChatMarkdown';
 
 type ChatMessage = {
@@ -111,6 +112,11 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+  const thinkingScrollRef = useRef<ScrollView>(null);
+  const liveThinking = [...state.messages].reverse().find(message => message.role === 'assistant' && message.isThinking);
+  useEffect(() => {
+    if (liveThinking) thinkingScrollRef.current?.scrollToEnd({animated: true});
+  }, [liveThinking?.thinkingContent]);
 
   useEffect(() => {
     const stateSubscription = emitter.addListener('LocalAIState', (next: Object) => {
@@ -193,16 +199,16 @@ export default function App() {
     return (
       <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
         <View style={[styles.messageCard, isUser ? styles.userCard : styles.assistantCard]}>
-          {!isUser && (item.isThinking || !!item.thinkingContent) && (
+          {!isUser && !item.isThinking && !!item.thinkingContent && (
             <View style={styles.thinkingSection}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={item.showThinking ? 'Recolher thinking' : 'Expandir thinking'}
                 style={styles.thinkingHeader}
                 onPress={() => bridge.toggleThinking(item.id)}>
-                <Text style={styles.thinkingBrain}>🧠</Text>
+                <Brain size={15} color="#D4D4D4" strokeWidth={1.8} />
                 <Text style={styles.thinkingLabel}>{item.isThinking ? 'thinking…' : 'thinking'}</Text>
-                <Text style={styles.thinkingArrow}>{item.showThinking ? '⌃' : '⌄'}</Text>
+                {item.showThinking ? <ChevronUp size={17} color="#FFFFFF" /> : <ChevronDown size={17} color="#FFFFFF" />}
               </Pressable>
               <View style={styles.thinkingBox}>
                 {item.showThinking ? (
@@ -245,17 +251,19 @@ export default function App() {
               accessibilityLabel="Criar novo chat"
               style={styles.topIconButton}
               onPress={() => {
+                pendingSendRef.current = null;
+                setStopRequested(false);
                 setDraft('');
                 setNotice('');
                 bridge.clearChat();
               }}>
-              <Text style={styles.topIconText}>＋</Text>
+              <Plus size={22} color="#FFFFFF" strokeWidth={1.8} />
             </Pressable>
             <Pressable
               accessibilityLabel="Configurações"
               style={styles.topIconButton}
               onPress={() => setSettingsOpen(true)}>
-              <Text style={styles.topIconText}>⚙</Text>
+              <Settings size={20} color="#FFFFFF" strokeWidth={1.8} />
             </Pressable>
           </View>
 
@@ -307,13 +315,25 @@ export default function App() {
           )}
 
           <View style={styles.composerArea}>
+            {!!liveThinking && (
+              <View style={styles.liveThinkingGlass}>
+                <View style={styles.liveThinkingHeader}>
+                  <Brain size={15} color="#FFFFFF" strokeWidth={1.8} />
+                  <Text style={styles.liveThinkingTitle}>Thinking</Text>
+                  <ActivityIndicator size="small" color="#D4D4D4" />
+                </View>
+                <ScrollView ref={thinkingScrollRef} style={styles.liveThinkingScroll} nestedScrollEnabled>
+                  <ChatMarkdown content={liveThinking.thinkingContent || 'Pensando…'} thinking />
+                </ScrollView>
+              </View>
+            )}
             <View style={styles.composer}>
               <Pressable
                 accessibilityLabel="Configuração de thinking"
                 style={styles.brainModeButton}
                 onPress={() => setThinkingModeOpen(true)}>
-                <Text style={styles.brainModeIcon}>🧠</Text>
-                <Text style={styles.brainModeArrow}>⌄</Text>
+                <Brain size={17} color="#D4D4D4" strokeWidth={1.8} />
+                <ChevronDown size={14} color="#A3A3A3" />
               </Pressable>
               <View style={styles.inputWrap}>
                 {draft.length === 0 && !inputFocused && (
@@ -367,7 +387,7 @@ export default function App() {
                   }
                 }}
                 disabled={!generating && (!modelReady || !draft.trim())}>
-                <Text style={styles.sendButtonText}>{generating ? '■' : '↑'}</Text>
+                {generating ? <Square size={15} color="#000000" fill="#000000" /> : <Send size={18} color="#000000" strokeWidth={2.2} />}
               </Pressable>
             </View>
           </View>
@@ -405,7 +425,7 @@ function ThinkingModeModal({visible, onClose}: {visible: boolean; onClose: () =>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Thinking</Text>
             <Pressable onPress={onClose} style={styles.iconButton}>
-              <Text style={styles.iconButtonText}>×</Text>
+              <X size={19} color="#FFFFFF" />
             </Pressable>
           </View>
           <Text style={styles.settingNote}>
@@ -602,6 +622,10 @@ const styles = StyleSheet.create({
   assistantCard: {backgroundColor: '#171717', borderTopLeftRadius: 6},
   messageText: {fontSize: 15, lineHeight: 23, color: '#F5F5F5'},
   thinkingSection: {marginBottom: 12, gap: 5, width: '100%'},
+  liveThinkingGlass: {maxHeight: 190, marginHorizontal: 12, marginBottom: 8, padding: 12, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)', backgroundColor: 'rgba(255,255,255,0.075)'},
+  liveThinkingHeader: {flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 8},
+  liveThinkingTitle: {flex: 1, color: '#FFFFFF', fontSize: 12, fontWeight: '600', letterSpacing: 0.2},
+  liveThinkingScroll: {maxHeight: 145},
   thinkingHeader: {flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingVertical: 3},
   thinkingBrain: {fontSize: 13, color: '#D4D4D4'},
   thinkingLabel: {fontSize: 12, fontWeight: '600', color: '#D4D4D4', letterSpacing: 0.2},
