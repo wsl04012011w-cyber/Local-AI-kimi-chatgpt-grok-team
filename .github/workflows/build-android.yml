@@ -81,7 +81,7 @@ jobs:
 
       - name: Fetch pinned llama.cpp source
         run: |
-          git clone --depth 1 --branch v0.3.0 https://github.com/ggml-org/llama.cpp app/src/main/cpp/llama.cpp
+          git clone --depth 1 --branch v0.3.0 https://github.com/ggml-org/llama.cpp app/src/main/llama-cpp-source
 
       - name: TypeScript check
         run: npm run typecheck

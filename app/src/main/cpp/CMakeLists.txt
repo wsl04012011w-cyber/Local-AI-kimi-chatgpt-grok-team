@@ -10,7 +10,7 @@ if(NOT DEFINED REACT_ANDROID_DIR OR
 endif()
 include("${REACT_ANDROID_DIR}/cmake-utils/ReactNative-application.cmake")
 
-get_filename_component(LLAMA_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/llama.cpp" ABSOLUTE)
+get_filename_component(LLAMA_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../llama-cpp-source" ABSOLUTE)
 if(NOT EXISTS "${LLAMA_CPP_DIR}/CMakeLists.txt")
     message(FATAL_ERROR
         "llama.cpp nao encontrado em ${LLAMA_CPP_DIR}. "
@@ -45,6 +45,6 @@ set(GGML_CUDA OFF CACHE BOOL "" FORCE)
 set(GGML_METAL OFF CACHE BOOL "" FORCE)
 
 add_subdirectory("${LLAMA_CPP_DIR}" "${CMAKE_BINARY_DIR}/llama.cpp" EXCLUDE_FROM_ALL)
-add_library(llama-jni SHARED llama-jni.cpp)
-target_include_directories(llama-jni PRIVATE "${LLAMA_CPP_DIR}/include")
+add_library(llama-jni SHARED native/llama-jni.cpp)
+target_include_directories(llama-jni PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${LLAMA_CPP_DIR}/include")
 target_link_libraries(llama-jni PRIVATE llama android log)
