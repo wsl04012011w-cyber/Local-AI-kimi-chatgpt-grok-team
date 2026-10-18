@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(appmodules C CXX)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # React Native 0.87 C++ app targets share this build with the llama.cpp JNI library.
