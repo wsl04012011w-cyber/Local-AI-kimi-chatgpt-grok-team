@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   KeyboardAvoidingView,
   Modal,
@@ -123,7 +124,7 @@ export default function App() {
     bridge.getInitialState()
       .then((initial: NativeState) => setState(initial))
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : 'Nao foi possivel iniciar o app.';
+        const message = error instanceof Error ? error.message : 'Não foi possível iniciar o app.';
         setNotice(message);
       });
 
@@ -134,22 +135,37 @@ export default function App() {
   }, []);
 
   const modelReady = state.modelStatus === 'loaded';
-  const modelLabel = modelReady
-    ? state.modelName
-    : state.modelStatus === 'loading'
-      ? 'Carregando modelo...'
-      : state.modelStatus === 'error'
-        ? 'Falha ao carregar'
-        : 'Nenhum modelo';
+  const [inputFocused, setInputFocused] = useState(false);
+  const [stopRequested, setStopRequested] = useState(false);
+  const shimmer = useRef(new Animated.Value(0)).current;
+  const modelLabel = state.modelStatus === 'loading'
+    ? 'Carregando modelo...'
+    : state.modelStatus === 'error'
+      ? 'Falha ao carregar'
+      : 'Nenhum modelo';
 
-  const statusDetails = modelReady
-    ? 'ctx ' + state.settings.nCtx +
-      ' · KV ' + state.settings.kvTypeKLabel + '/' + state.settings.kvTypeVLabel +
-      ' · ' + state.settings.nThreads + ' threads' +
-      (state.stats && state.stats.genTokensPerSecond > 0
-        ? ' · ' + state.stats.genTokensPerSecond.toFixed(1) + ' tok/s'
-        : '')
-    : 'Inferencia e historico ficam no proprio aparelho';
+  useEffect(() => {
+    if (draft.length > 0 || inputFocused) {
+      shimmer.stopAnimation();
+      shimmer.setValue(0);
+      return;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, {toValue: 1, duration: 650, useNativeDriver: true}),
+        Animated.delay(350),
+        Animated.timing(shimmer, {toValue: 0, duration: 0, useNativeDriver: true}),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [draft, inputFocused, shimmer]);
+
+  useEffect(() => {
+    if (!state.isGenerating) setStopRequested(false);
+  }, [state.isGenerating]);
+
+  const generating = state.isGenerating && !stopRequested;
 
   const send = () => {
     const text = draft.trim();
@@ -164,17 +180,13 @@ export default function App() {
     const isUser = item.role === 'user';
     return (
       <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
-        <View style={[styles.avatar, isUser ? styles.userAvatar : styles.assistantAvatar]}>
-          <Text style={styles.avatarText}>{isUser ? 'VOCE' : 'AI'}</Text>
-        </View>
         <View style={[styles.messageCard, isUser ? styles.userCard : styles.assistantCard]}>
-          <Text style={styles.messageLabel}>{isUser ? 'Voce' : 'Local AI'}</Text>
           {!!item.thinkingContent && (
             <Pressable
               style={styles.thinkingToggle}
               onPress={() => bridge.toggleThinking(item.id)}>
               <Text style={styles.thinkingLabel}>
-                {item.isThinking ? 'Raciocinando...' : item.showThinking ? 'Ocultar raciocinio' : 'Ver raciocinio'}
+                {item.isThinking ? 'Pensando…' : item.showThinking ? 'Ocultar raciocínio' : 'Ver raciocínio'}
               </Text>
             </Pressable>
           )}
@@ -183,7 +195,7 @@ export default function App() {
           )}
           {!!item.content && <Text selectable style={styles.messageText}>{item.content}</Text>}
           {item.isStreaming && !item.content && !item.thinkingContent && (
-            <ActivityIndicator size="small" color="#A5B4FC" />
+            <ActivityIndicator size="small" color="#FFFFFF" />
           )}
         </View>
       </View>
@@ -197,35 +209,25 @@ export default function App() {
         <KeyboardAvoidingView
           style={styles.screen}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.header}>
-            <View style={styles.brandMark}><Text style={styles.brandMarkText}>✦</Text></View>
-            <View style={styles.titleBlock}>
-              <Text style={styles.title}>Local AI</Text>
-              <Text style={styles.subtitle}>Seu assistente, no seu dispositivo</Text>
-            </View>
-            <Pressable style={styles.iconButton} onPress={() => setSettingsOpen(true)}>
-              <Text style={styles.iconButtonText}>⚙</Text>
+          <View style={styles.topControls}>
+            <View style={styles.topControlsSpacer} />
+            <Pressable
+              accessibilityLabel="Criar novo chat"
+              style={styles.topIconButton}
+              onPress={() => {
+                setDraft('');
+                setNotice('');
+                bridge.clearChat();
+              }}>
+              <Text style={styles.topIconText}>＋</Text>
             </Pressable>
-            <Pressable style={styles.iconButton} onPress={() => bridge.clearChat()}>
-              <Text style={styles.iconButtonText}>⌫</Text>
+            <Pressable
+              accessibilityLabel="Configurações"
+              style={styles.topIconButton}
+              onPress={() => setSettingsOpen(true)}>
+              <Text style={styles.topIconText}>⚙</Text>
             </Pressable>
           </View>
-
-          <Pressable
-            style={styles.modelBar}
-            onPress={() => bridge.pickModel()}
-            disabled={state.importing || state.modelStatus === 'loading'}>
-            <View style={styles.statusDotWrap}>
-              <View style={[styles.statusDot, modelReady ? styles.dotReady : styles.dotIdle]} />
-            </View>
-            <View style={styles.modelTextBlock}>
-              <Text numberOfLines={1} style={styles.modelName}>{modelLabel}</Text>
-              <Text numberOfLines={1} style={styles.modelDetails}>{statusDetails}</Text>
-            </View>
-            {state.importing || state.modelStatus === 'loading'
-              ? <ActivityIndicator size="small" color="#A5B4FC" />
-              : <Text style={styles.modelAction}>Abrir GGUF  ↗</Text>}
-          </Pressable>
 
           {!!notice && (
             <Pressable style={styles.notice} onPress={() => setNotice('')}>
@@ -235,25 +237,22 @@ export default function App() {
 
           {state.importing && (
             <View style={styles.importingRow}>
-              <ActivityIndicator size="small" color="#A5B4FC" />
+              <ActivityIndicator size="small" color="#FFFFFF" />
               <Text style={styles.importingText}>Importando {state.importName}...</Text>
             </View>
           )}
 
           {!modelReady && state.messages.length === 0 ? (
             <View style={styles.emptyState}>
-              <View style={styles.heroIcon}><Text style={styles.heroIconText}>✦</Text></View>
-              <Text style={styles.heroTitle}>IA local. Seus dados, seus termos.</Text>
+              <Text style={styles.heroTitle}>
+                {state.modelStatus === 'error' ? 'Não foi possível carregar o modelo' : 'Comece uma conversa'}
+              </Text>
               <Text style={styles.heroDescription}>
-                Selecione um modelo GGUF para conversar offline. O motor llama.cpp e o historico permanecem no Android.
+                Selecione um modelo GGUF para começar.
               </Text>
               <Pressable style={styles.primaryButton} onPress={() => bridge.pickModel()}>
-                <Text style={styles.primaryButtonText}>Selecionar modelo GGUF</Text>
+                <Text style={styles.primaryButtonText}>Selecionar modelo</Text>
               </Pressable>
-              <View style={styles.privacyPill}>
-                <View style={[styles.statusDot, styles.dotReady]} />
-                <Text style={styles.privacyText}>Sem conta · Sem nuvem · No aparelho</Text>
-              </View>
               {state.modelStatus === 'error' && (
                 <Text style={styles.errorText}>{state.modelError}</Text>
               )}
@@ -270,38 +269,64 @@ export default function App() {
               onContentSizeChange={() => listRef.current?.scrollToEnd({animated: true})}
               ListEmptyComponent={
                 <View style={styles.chatEmpty}>
-                  <Text style={styles.chatEmptyTitle}>Modelo pronto para conversar</Text>
-                  <Text style={styles.chatEmptyText}>Mande uma mensagem para comecar.</Text>
+                  <Text style={styles.chatEmptyTitle}>Como posso ajudar?</Text>
+                  <Text style={styles.chatEmptyText}>Escreva uma mensagem abaixo.</Text>
                 </View>
               }
             />
           )}
 
           <View style={styles.composerArea}>
-            {!modelReady && (
-              <Text style={styles.composerHint}>Carregue um modelo para habilitar o chat.</Text>
-            )}
             <View style={styles.composer}>
-              <TextInput
-                style={styles.input}
-                value={draft}
-                onChangeText={setDraft}
-                placeholder={modelReady ? 'Pergunte alguma coisa...' : 'Carregue um modelo GGUF primeiro'}
-                placeholderTextColor="#72798B"
-                multiline
-                maxLength={12000}
-                editable={modelReady && !state.isGenerating}
-                onSubmitEditing={send}
-                returnKeyType="send"
-              />
+              <View style={styles.inputWrap}>
+                {draft.length === 0 && !inputFocused && (
+                  <View pointerEvents="none" style={styles.placeholderLayer}>
+                    <Text style={styles.placeholderText}>Ask LLM...</Text>
+                    <Animated.View
+                      style={[
+                        styles.shimmerBeam,
+                        {
+                          transform: [
+                            {translateX: shimmer.interpolate({inputRange: [0, 1], outputRange: [-30, 270]})},
+                            {skewX: '-18deg'},
+                          ],
+                        },
+                      ]}
+                    />
+                  </View>
+                )}
+                <TextInput
+                  style={styles.input}
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder=""
+                  multiline
+                  maxLength={12000}
+                  editable={modelReady && !generating}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setInputFocused(false)}
+                  onSubmitEditing={send}
+                  returnKeyType="send"
+                />
+              </View>
               <Pressable
-                style={[styles.sendButton, (!modelReady || (!state.isGenerating && !draft.trim())) && styles.buttonDisabled]}
-                onPress={() => state.isGenerating ? bridge.stopGeneration() : send()}
-                disabled={!state.isGenerating && (!modelReady || !draft.trim())}>
-                <Text style={styles.sendButtonText}>{state.isGenerating ? '■' : '↑'}</Text>
+                accessibilityLabel={generating ? 'Parar geração' : 'Enviar mensagem'}
+                style={[
+                  styles.sendButton,
+                  (!modelReady || (!generating && !draft.trim())) && styles.buttonDisabled,
+                ]}
+                onPress={() => {
+                  if (generating) {
+                    setStopRequested(true);
+                    bridge.stopGeneration();
+                  } else {
+                    send();
+                  }
+                }}
+                disabled={!generating && (!modelReady || !draft.trim())}>
+                <Text style={styles.sendButtonText}>{generating ? '■' : '↑'}</Text>
               </Pressable>
             </View>
-            <Text style={styles.footerHint}>As respostas sao geradas no aparelho e podem levar alguns segundos.</Text>
           </View>
         </KeyboardAvoidingView>
 
@@ -435,90 +460,72 @@ function SettingToggle({label, value, onPress}: {label: string; value: boolean; 
 }
 
 const styles = StyleSheet.create({
-  safeArea: {flex: 1, backgroundColor: '#090B10'},
-  screen: {flex: 1, backgroundColor: '#090B10'},
-  header: {minHeight: 68, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#242936'},
-  brandMark: {width: 38, height: 38, borderRadius: 14, backgroundColor: '#252746', alignItems: 'center', justifyContent: 'center'},
-  brandMarkText: {fontSize: 24, color: '#B9B7FF'},
-  titleBlock: {flex: 1},
-  title: {fontSize: 18, fontWeight: '700', color: '#F2F3FA'},
-  subtitle: {fontSize: 11, color: '#858DA0', marginTop: 2},
-  iconButton: {width: 38, height: 38, borderRadius: 13, backgroundColor: '#171B25', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#292E3B'},
-  iconButtonText: {fontSize: 19, color: '#C2C7D4'},
-  modelBar: {marginHorizontal: 14, marginTop: 12, padding: 12, borderRadius: 16, borderColor: '#2B3040', borderWidth: 1, backgroundColor: '#11151E', flexDirection: 'row', alignItems: 'center', gap: 10},
-  statusDotWrap: {width: 12, alignItems: 'center'},
-  statusDot: {width: 7, height: 7, borderRadius: 4},
-  dotReady: {backgroundColor: '#57D6A0'},
-  dotIdle: {backgroundColor: '#8A91A5'},
-  modelTextBlock: {flex: 1},
-  modelName: {fontSize: 13, fontWeight: '600', color: '#E9EBF4'},
-  modelDetails: {fontSize: 10, color: '#8A92A5', marginTop: 4},
-  modelAction: {fontSize: 11, fontWeight: '600', color: '#B9B7FF'},
-  notice: {marginHorizontal: 14, marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: '#38252A'},
-  noticeText: {fontSize: 12, color: '#FFD0D6'},
+  safeArea: {flex: 1, backgroundColor: '#000000'},
+  screen: {flex: 1, backgroundColor: '#000000'},
+  topControls: {height: 44, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#000000'},
+  topControlsSpacer: {flex: 1},
+  topIconButton: {width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19},
+  topIconText: {fontSize: 23, color: '#FFFFFF', fontWeight: '400'},
+  notice: {marginHorizontal: 14, marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: '#252525'},
+  noticeText: {fontSize: 12, color: '#FFFFFF'},
   importingRow: {paddingHorizontal: 18, paddingTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8},
-  importingText: {fontSize: 12, color: '#A5B4FC'},
+  importingText: {fontSize: 12, color: '#D4D4D4'},
   emptyState: {flex: 1, paddingHorizontal: 28, alignItems: 'center', justifyContent: 'center'},
-  heroIcon: {width: 72, height: 72, borderRadius: 26, alignItems: 'center', justifyContent: 'center', backgroundColor: '#232643', borderWidth: 1, borderColor: '#3E4166', marginBottom: 22},
-  heroIconText: {fontSize: 37, color: '#C4C1FF'},
-  heroTitle: {fontSize: 22, fontWeight: '700', color: '#F0F1F8', textAlign: 'center', lineHeight: 30},
-  heroDescription: {fontSize: 14, lineHeight: 22, color: '#949BAE', textAlign: 'center', marginTop: 12, marginBottom: 24},
-  primaryButton: {minHeight: 48, paddingHorizontal: 18, borderRadius: 15, backgroundColor: '#7775EE', alignItems: 'center', justifyContent: 'center'},
-  primaryButtonCompact: {minHeight: 44, paddingHorizontal: 22, borderRadius: 13, backgroundColor: '#7775EE', alignItems: 'center', justifyContent: 'center'},
-  primaryButtonText: {fontSize: 13, fontWeight: '700', color: '#FFFFFF'},
-  privacyPill: {marginTop: 18, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingHorizontal: 11, borderRadius: 99, backgroundColor: '#121820'},
-  privacyText: {fontSize: 11, color: '#8E97A7'},
-  errorText: {fontSize: 12, color: '#FF9CA7', marginTop: 14, textAlign: 'center'},
+  heroTitle: {fontSize: 21, fontWeight: '600', color: '#FFFFFF', textAlign: 'center', lineHeight: 29},
+  heroDescription: {fontSize: 14, lineHeight: 21, color: '#A3A3A3', textAlign: 'center', marginTop: 10, marginBottom: 20},
+  primaryButton: {minHeight: 44, paddingHorizontal: 18, borderRadius: 22, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center'},
+  primaryButtonCompact: {minHeight: 44, paddingHorizontal: 22, borderRadius: 22, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center'},
+  primaryButtonText: {fontSize: 13, fontWeight: '700', color: '#000000'},
+  errorText: {fontSize: 12, color: '#D4D4D4', marginTop: 14, textAlign: 'center'},
   messageList: {flex: 1},
-  messageContent: {paddingHorizontal: 14, paddingVertical: 18, gap: 16},
-  messageRow: {flexDirection: 'row', alignItems: 'flex-start', gap: 9},
+  messageContent: {paddingHorizontal: 16, paddingVertical: 18, gap: 18},
+  messageRow: {flexDirection: 'row', alignItems: 'flex-start'},
   userRow: {justifyContent: 'flex-end'},
   assistantRow: {justifyContent: 'flex-start'},
-  avatar: {width: 30, height: 30, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginTop: 2},
-  userAvatar: {backgroundColor: '#34334F'},
-  assistantAvatar: {backgroundColor: '#193A31'},
-  avatarText: {fontSize: 8, fontWeight: '800', color: '#DADCF6'},
-  messageCard: {maxWidth: '88%', padding: 13, borderRadius: 16, borderWidth: 1},
-  userCard: {backgroundColor: '#292B46', borderColor: '#3B3D5D', borderTopRightRadius: 5},
-  assistantCard: {backgroundColor: '#141821', borderColor: '#282E3B', borderTopLeftRadius: 5},
-  messageLabel: {fontSize: 10, letterSpacing: 0.4, fontWeight: '700', color: '#9EA5B7', marginBottom: 7},
-  messageText: {fontSize: 14, lineHeight: 22, color: '#EDF0F7'},
-  thinkingToggle: {alignSelf: 'flex-start', marginBottom: 7, paddingVertical: 5, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#24293A'},
-  thinkingLabel: {fontSize: 11, color: '#B9B7FF'},
-  thinkingText: {fontSize: 12, lineHeight: 18, color: '#9EA5B9', paddingLeft: 9, marginBottom: 8, borderLeftWidth: 2, borderLeftColor: '#6866BD'},
+  messageCard: {maxWidth: '90%', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20},
+  userCard: {backgroundColor: '#2F2F2F', borderTopRightRadius: 6},
+  assistantCard: {backgroundColor: '#171717', borderTopLeftRadius: 6},
+  messageText: {fontSize: 15, lineHeight: 23, color: '#F5F5F5'},
+  thinkingToggle: {alignSelf: 'flex-start', marginBottom: 7, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#303030'},
+  thinkingLabel: {fontSize: 11, color: '#FFFFFF'},
+  thinkingText: {fontSize: 12, lineHeight: 18, color: '#BDBDBD', paddingLeft: 9, marginBottom: 8, borderLeftWidth: 2, borderLeftColor: '#777777'},
   chatEmpty: {paddingTop: 70, alignItems: 'center'},
-  chatEmptyTitle: {fontSize: 17, fontWeight: '700', color: '#ECEEF8'},
-  chatEmptyText: {fontSize: 13, color: '#8F97AA', marginTop: 8},
-  composerArea: {borderTopWidth: 1, borderTopColor: '#242936', paddingHorizontal: 13, paddingTop: 12, paddingBottom: 10, backgroundColor: '#0C0F16'},
-  composerHint: {fontSize: 11, color: '#8E96AA', marginBottom: 7, marginLeft: 4},
-  composer: {minHeight: 52, maxHeight: 132, flexDirection: 'row', alignItems: 'flex-end', padding: 6, gap: 8, borderRadius: 17, backgroundColor: '#171B25', borderColor: '#2B3040', borderWidth: 1},
-  input: {flex: 1, maxHeight: 112, paddingHorizontal: 10, paddingVertical: 8, color: '#F2F3F9', fontSize: 14, lineHeight: 20},
-  sendButton: {width: 38, height: 38, borderRadius: 13, backgroundColor: '#7775EE', alignItems: 'center', justifyContent: 'center'},
-  buttonDisabled: {opacity: 0.35},
-  sendButtonText: {fontSize: 20, fontWeight: '800', color: '#FFFFFF'},
-  footerHint: {fontSize: 10, color: '#666E81', textAlign: 'center', marginTop: 8},
-  modalScrim: {flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.62)'},
-  modalCard: {maxHeight: '92%', paddingTop: 20, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: '#11151F', borderTopLeftRadius: 25, borderTopRightRadius: 25, borderWidth: 1, borderColor: '#2A3040'},
+  chatEmptyTitle: {fontSize: 17, fontWeight: '600', color: '#E5E5E5'},
+  chatEmptyText: {fontSize: 13, color: '#A3A3A3', marginTop: 8},
+  composerArea: {paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8, backgroundColor: '#000000'},
+  composer: {minHeight: 52, maxHeight: 132, flexDirection: 'row', alignItems: 'flex-end', padding: 5, gap: 8, borderRadius: 26, backgroundColor: '#111111', borderColor: '#383838', borderWidth: StyleSheet.hairlineWidth},
+  inputWrap: {flex: 1, minHeight: 40, justifyContent: 'center', overflow: 'hidden'},
+  input: {flex: 1, maxHeight: 112, paddingHorizontal: 10, paddingVertical: 9, color: '#FFFFFF', fontSize: 15, lineHeight: 21},
+  placeholderLayer: {position: 'absolute', left: 10, right: 0, top: 0, bottom: 0, justifyContent: 'center', overflow: 'hidden'},
+  placeholderText: {fontSize: 15, lineHeight: 21, color: '#8C8C8C'},
+  shimmerBeam: {position: 'absolute', left: 0, top: -12, bottom: -12, width: 22, backgroundColor: 'rgba(255,255,255,0.22)'},
+  sendButton: {width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center'},
+  buttonDisabled: {opacity: 0.28},
+  sendButtonText: {fontSize: 20, fontWeight: '800', color: '#000000'},
+  modalScrim: {flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)'},
+  modalCard: {maxHeight: '92%', paddingTop: 20, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: '#111111', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#383838'},
   modalHeader: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14},
-  modalTitle: {fontSize: 21, fontWeight: '800', color: '#F2F3FB'},
-  modalSubtitle: {fontSize: 12, color: '#8992A7', marginTop: 4},
+  modalTitle: {fontSize: 21, fontWeight: '700', color: '#FFFFFF'},
+  modalSubtitle: {fontSize: 12, color: '#A3A3A3', marginTop: 4},
+  iconButton: {width: 38, height: 38, borderRadius: 19, backgroundColor: '#222222', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#404040'},
+  iconButtonText: {fontSize: 19, color: '#FFFFFF'},
   settingsContent: {paddingBottom: 12, gap: 10},
-  settingLabel: {fontSize: 12, fontWeight: '700', color: '#C4C9D7', marginTop: 10},
+  settingLabel: {fontSize: 12, fontWeight: '700', color: '#D4D4D4', marginTop: 10},
   choiceRow: {flexDirection: 'row', alignItems: 'center', gap: 9, flexWrap: 'wrap'},
-  choice: {minHeight: 40, minWidth: 58, paddingHorizontal: 12, borderRadius: 11, borderWidth: 1, borderColor: '#303648', backgroundColor: '#191E2A', alignItems: 'center', justifyContent: 'center'},
-  choiceSelected: {borderColor: '#7775EE', backgroundColor: '#2A294D'},
-  choiceText: {fontSize: 12, fontWeight: '600', color: '#AEB5C7'},
-  choiceTextSelected: {color: '#D7D5FF'},
+  choice: {minHeight: 40, minWidth: 58, paddingHorizontal: 12, borderRadius: 11, borderWidth: 1, borderColor: '#404040', backgroundColor: '#222222', alignItems: 'center', justifyContent: 'center'},
+  choiceSelected: {borderColor: '#FFFFFF', backgroundColor: '#3A3A3A'},
+  choiceText: {fontSize: 12, fontWeight: '600', color: '#C4C4C4'},
+  choiceTextSelected: {color: '#FFFFFF'},
   stepper: {flexDirection: 'row', alignItems: 'center', gap: 20},
-  stepperValue: {fontSize: 16, fontWeight: '700', color: '#F2F3FB', minWidth: 24, textAlign: 'center'},
-  toggleRow: {minHeight: 45, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#292E3C'},
-  toggleLabel: {fontSize: 13, color: '#D5D9E5', flex: 1, paddingRight: 10},
-  toggle: {width: 43, height: 25, borderRadius: 14, backgroundColor: '#333848', justifyContent: 'center', padding: 3},
-  toggleOn: {backgroundColor: '#605DC4'},
-  toggleThumb: {width: 19, height: 19, borderRadius: 10, backgroundColor: '#AEB5C6'},
-  toggleThumbOn: {alignSelf: 'flex-end', backgroundColor: '#FFFFFF'},
-  settingNote: {fontSize: 11, lineHeight: 17, color: '#8992A7', marginTop: 8},
+  stepperValue: {fontSize: 16, fontWeight: '700', color: '#FFFFFF', minWidth: 24, textAlign: 'center'},
+  toggleRow: {minHeight: 45, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#383838'},
+  toggleLabel: {fontSize: 13, color: '#E5E5E5', flex: 1, paddingRight: 10},
+  toggle: {width: 43, height: 25, borderRadius: 14, backgroundColor: '#3A3A3A', justifyContent: 'center', padding: 3},
+  toggleOn: {backgroundColor: '#FFFFFF'},
+  toggleThumb: {width: 19, height: 19, borderRadius: 10, backgroundColor: '#BDBDBD'},
+  toggleThumbOn: {alignSelf: 'flex-end', backgroundColor: '#000000'},
+  settingNote: {fontSize: 11, lineHeight: 17, color: '#A3A3A3', marginTop: 8},
   modalActions: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 10},
-  secondaryButton: {minHeight: 44, paddingHorizontal: 12, borderRadius: 13, borderWidth: 1, borderColor: '#42485A', alignItems: 'center', justifyContent: 'center'},
-  secondaryButtonText: {fontSize: 11, fontWeight: '600', color: '#C1C6D5'},
+  secondaryButton: {minHeight: 44, paddingHorizontal: 12, borderRadius: 22, borderWidth: 1, borderColor: '#555555', alignItems: 'center', justifyContent: 'center'},
+  secondaryButtonText: {fontSize: 11, fontWeight: '600', color: '#E5E5E5'},
 });
