@@ -21,7 +21,9 @@ extensions.configure<com.facebook.react.ReactSettingsExtension> {
     )
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    // The React Native root-project plugin adds Maven Central to :app.
+    // Prefer the settings repositories instead of failing on that plugin behavior.
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
     repositories {
         google()
         mavenCentral()
