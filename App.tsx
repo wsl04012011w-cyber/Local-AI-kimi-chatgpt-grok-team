@@ -138,12 +138,6 @@ export default function App() {
   const [inputFocused, setInputFocused] = useState(false);
   const [stopRequested, setStopRequested] = useState(false);
   const shimmer = useRef(new Animated.Value(0)).current;
-  const modelLabel = state.modelStatus === 'loading'
-    ? 'Carregando modelo...'
-    : state.modelStatus === 'error'
-      ? 'Falha ao carregar'
-      : 'Nenhum modelo';
-
   useEffect(() => {
     if (draft.length > 0 || inputFocused) {
       shimmer.stopAnimation();
@@ -302,7 +296,7 @@ export default function App() {
                   placeholder=""
                   multiline
                   maxLength={12000}
-                  editable={modelReady && !generating}
+                  editable={modelReady && !state.isGenerating}
                   onFocus={() => setInputFocused(true)}
                   onBlur={() => setInputFocused(false)}
                   onSubmitEditing={send}
