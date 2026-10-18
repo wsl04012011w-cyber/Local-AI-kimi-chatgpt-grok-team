@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
+import ChatMarkdown from './ChatMarkdown';
 
 type ChatMessage = {
   id: number;
@@ -137,6 +138,8 @@ export default function App() {
   const modelReady = state.modelStatus === 'loaded';
   const [inputFocused, setInputFocused] = useState(false);
   const [stopRequested, setStopRequested] = useState(false);
+  const [thinkingModeOpen, setThinkingModeOpen] = useState(false);
+  const pendingSendRef = useRef<string | null>(null);
   const shimmer = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (draft.length > 0 || inputFocused) {
@@ -146,9 +149,8 @@ export default function App() {
     }
     const animation = Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmer, {toValue: 1, duration: 650, useNativeDriver: true}),
-        Animated.delay(350),
-        Animated.timing(shimmer, {toValue: 0, duration: 0, useNativeDriver: true}),
+        Animated.timing(shimmer, {toValue: 1, duration: 1000, useNativeDriver: false}),
+        Animated.timing(shimmer, {toValue: 0, duration: 0, useNativeDriver: false}),
       ]),
     );
     animation.start();
@@ -156,14 +158,26 @@ export default function App() {
   }, [draft, inputFocused, shimmer]);
 
   useEffect(() => {
-    if (!state.isGenerating) setStopRequested(false);
-  }, [state.isGenerating]);
+    if (!state.isGenerating) {
+      setStopRequested(false);
+      const pending = pendingSendRef.current;
+      if (pending && modelReady) {
+        pendingSendRef.current = null;
+        bridge.sendMessage(pending);
+      }
+    }
+  }, [state.isGenerating, modelReady]);
 
   const generating = state.isGenerating && !stopRequested;
 
   const send = () => {
     const text = draft.trim();
-    if (!text || !modelReady || state.isGenerating) {
+    if (!text || !modelReady) return;
+    if (state.isGenerating) {
+      if (stopRequested) {
+        pendingSendRef.current = text;
+        setDraft('');
+      }
       return;
     }
     setDraft('');
@@ -175,19 +189,36 @@ export default function App() {
     return (
       <View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
         <View style={[styles.messageCard, isUser ? styles.userCard : styles.assistantCard]}>
-          {!!item.thinkingContent && (
-            <Pressable
-              style={styles.thinkingToggle}
-              onPress={() => bridge.toggleThinking(item.id)}>
-              <Text style={styles.thinkingLabel}>
-                {item.isThinking ? 'Pensando…' : item.showThinking ? 'Ocultar raciocínio' : 'Ver raciocínio'}
-              </Text>
-            </Pressable>
+          {!isUser && (item.isThinking || !!item.thinkingContent) && (
+            <View style={styles.thinkingSection}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={item.showThinking ? 'Recolher thinking' : 'Expandir thinking'}
+                style={styles.thinkingHeader}
+                onPress={() => bridge.toggleThinking(item.id)}>
+                <Text style={styles.thinkingBrain}>🧠</Text>
+                <Text style={styles.thinkingLabel}>{item.isThinking ? 'thinking…' : 'thinking'}</Text>
+                <Text style={styles.thinkingArrow}>{item.showThinking ? '⌃' : '⌄'}</Text>
+              </Pressable>
+              <View style={styles.thinkingBox}>
+                {item.showThinking ? (
+                  <ChatMarkdown content={item.thinkingContent || 'O modelo está pensando…'} thinking />
+                ) : (
+                  <Text numberOfLines={2} style={styles.thinkingPreview}>
+                    {item.thinkingContent || 'O modelo está pensando…'}
+                  </Text>
+                )}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={item.showThinking ? 'Recolher thinking' : 'Ver thinking completo'}
+                  style={styles.thinkingExpandButton}
+                  onPress={() => bridge.toggleThinking(item.id)}>
+                  <Text style={styles.thinkingArrow}>{item.showThinking ? '⌃' : '⌄'}</Text>
+                </Pressable>
+              </View>
+            </View>
           )}
-          {!!item.thinkingContent && item.showThinking && (
-            <Text style={styles.thinkingText}>{item.thinkingContent}</Text>
-          )}
-          {!!item.content && <Text selectable style={styles.messageText}>{item.content}</Text>}
+          {!!item.content && <ChatMarkdown content={item.content} />}
           {item.isStreaming && !item.content && !item.thinkingContent && (
             <ActivityIndicator size="small" color="#FFFFFF" />
           )}
@@ -202,7 +233,7 @@ export default function App() {
         <StatusBar barStyle="light-content" />
         <KeyboardAvoidingView
           style={styles.screen}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.topControls}>
             <View style={styles.topControlsSpacer} />
             <Pressable
@@ -272,21 +303,34 @@ export default function App() {
 
           <View style={styles.composerArea}>
             <View style={styles.composer}>
+              <Pressable
+                accessibilityLabel="Configuração de thinking"
+                style={styles.brainModeButton}
+                onPress={() => setThinkingModeOpen(true)}>
+                <Text style={styles.brainModeIcon}>🧠</Text>
+                <Text style={styles.brainModeArrow}>⌄</Text>
+              </Pressable>
               <View style={styles.inputWrap}>
                 {draft.length === 0 && !inputFocused && (
                   <View pointerEvents="none" style={styles.placeholderLayer}>
-                    <Text style={styles.placeholderText}>Ask LLM...</Text>
-                    <Animated.View
-                      style={[
-                        styles.shimmerBeam,
-                        {
-                          transform: [
-                            {translateX: shimmer.interpolate({inputRange: [0, 1], outputRange: [-30, 270]})},
-                            {skewX: '-18deg'},
-                          ],
-                        },
-                      ]}
-                    />
+                    <Text style={styles.placeholderText}>
+                      {'Ask LLM...'.split('').map((character, index, characters) => {
+                        const peak = index / (characters.length - 1);
+                        const inputRange = index === 0 ? [0, 0.001, 1]
+                          : index === characters.length - 1 ? [0, 0.999, 1]
+                          : [0, peak, 1];
+                        const colors = index === 0 ? ['#F4F4F4', '#F4F4F4', '#777777']
+                          : index === characters.length - 1 ? ['#777777', '#F4F4F4', '#F4F4F4']
+                          : ['#777777', '#F4F4F4', '#777777'];
+                        return (
+                          <Animated.Text
+                            key={index}
+                            style={{color: shimmer.interpolate({inputRange, outputRange: colors, extrapolate: 'clamp'})}}>
+                            {character}
+                          </Animated.Text>
+                        );
+                      })}
+                    </Text>
                   </View>
                 )}
                 <TextInput
@@ -296,7 +340,7 @@ export default function App() {
                   placeholder=""
                   multiline
                   maxLength={12000}
-                  editable={modelReady && !state.isGenerating}
+                  editable={modelReady && (!state.isGenerating || stopRequested)}
                   onFocus={() => setInputFocused(true)}
                   onBlur={() => setInputFocused(false)}
                   onSubmitEditing={send}
@@ -324,9 +368,14 @@ export default function App() {
           </View>
         </KeyboardAvoidingView>
 
+        <ThinkingModeModal
+          visible={thinkingModeOpen}
+          onClose={() => setThinkingModeOpen(false)}
+        />
         <SettingsModal
           visible={settingsOpen}
           current={state.settings}
+          stats={state.stats}
           onClose={() => setSettingsOpen(false)}
           onApply={(next) => {
             bridge.applySettings(next);
@@ -342,15 +391,50 @@ export default function App() {
   );
 }
 
+function ThinkingModeModal({visible, onClose}: {visible: boolean; onClose: () => void}) {
+  const levels = ['Off', 'Baixo', 'Médio', 'Alto', 'Máx'];
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <Pressable style={styles.modeScrim} onPress={onClose}>
+        <Pressable style={styles.modeCard} onPress={() => {}}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Thinking</Text>
+            <Pressable onPress={onClose} style={styles.iconButton}>
+              <Text style={styles.iconButtonText}>×</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.settingNote}>
+            Modo atual: automático, definido pelo template GGUF. Esta ponte nativa ainda não expõe um orçamento de raciocínio; os níveis abaixo ficam indisponíveis para não fingir que alteram o modelo.
+          </Text>
+          <View style={styles.modeList}>
+            <View style={[styles.modeOption, styles.modeOptionSelected]}>
+              <Text style={styles.modeOptionText}>Automático</Text>
+              <Text style={styles.modeOptionStatus}>Ativo</Text>
+            </View>
+            {levels.map(level => (
+              <View key={level} style={[styles.modeOption, styles.modeOptionDisabled]}>
+                <Text style={styles.modeOptionTextDisabled}>{level}</Text>
+                <Text style={styles.modeOptionStatus}>Indisponível</Text>
+              </View>
+            ))}
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function SettingsModal({
   visible,
   current,
+  stats,
   onClose,
   onApply,
   onUnload,
 }: {
   visible: boolean;
   current: InferenceSettings;
+  stats: GenerationStats;
   onClose: () => void;
   onApply: (settings: InferenceSettings) => void;
   onUnload: () => void;
@@ -389,7 +473,7 @@ function SettingsModal({
           <ScrollView contentContainerStyle={styles.settingsContent}>
             <Text style={styles.settingLabel}>Contexto</Text>
             <View style={styles.choiceRow}>
-              {[2048, 4096, 8192].map((size) => (
+              {[2048, 4096, 8192, 16384, 32768].map((size) => (
                 <Pressable
                   key={size}
                   onPress={() => setDraft({...draft, nCtx: size})}
@@ -410,6 +494,38 @@ function SettingsModal({
               </Pressable>
             </View>
 
+            <Text style={styles.settingLabel}>Diagnóstico da última geração</Text>
+            {stats ? (
+              <View style={styles.statsCard}>
+                <View style={styles.statsMainRow}>
+                  <Text style={styles.statsValue}>{stats.genTokensPerSecond.toFixed(1)} tok/s</Text>
+                  <Text style={styles.statsCaption}>velocidade medida no motor nativo</Text>
+                </View>
+                <View style={styles.statsGrid}>
+                  <View style={styles.statsCell}>
+                    <Text style={styles.statsCellValue}>{stats.generatedTokens}</Text>
+                    <Text style={styles.statsCaption}>tokens gerados</Text>
+                  </View>
+                  <View style={styles.statsCell}>
+                    <Text style={styles.statsCellValue}>{(stats.generationMs / 1000).toFixed(2)} s</Text>
+                    <Text style={styles.statsCaption}>tempo de geração</Text>
+                  </View>
+                  <View style={styles.statsCell}>
+                    <Text style={styles.statsCellValue}>{(stats.promptMs / 1000).toFixed(2)} s</Text>
+                    <Text style={styles.statsCaption}>processamento do prompt</Text>
+                  </View>
+                  <View style={styles.statsCell}>
+                    <Text style={styles.statsCellValue}>{stats.reusedTokens}/{stats.promptTokens + stats.reusedTokens}</Text>
+                    <Text style={styles.statsCaption}>tokens reaproveitados</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.settingNote}>Envie uma mensagem para registrar as métricas reais do motor.</Text>
+            )}
+            <Text style={styles.settingNote}>
+              A taxa tok/s é calculada pelo llama.cpp, não pela frequência de atualização da tela. Se a taxa nativa estiver alta mas a saída visual parecer atrasada, o gargalo está no caminho de atualização da interface.
+            </Text>
             <Text style={styles.settingLabel}>KV cache (toque para alternar)</Text>
             <View style={styles.choiceRow}>
               <Pressable style={styles.choice} onPress={() => cycleKv('kvTypeK')}>
@@ -425,7 +541,7 @@ function SettingsModal({
             <SettingToggle label="Bloquear memoria (mlock)" value={draft.useMlock} onPress={() => toggle('useMlock')} />
             <SettingToggle label="Reutilizar cache entre mensagens" value={draft.reuseCache} onPress={() => toggle('reuseCache')} />
             <Text style={styles.settingNote}>
-              KV V quantizado ativa flash attention automaticamente. Alterar estas opcoes recarrega o modelo e pode consumir mais memoria.
+              KV V quantizado ativa Flash Attention automaticamente. Contextos maiores consomem mais RAM; em CPU, KV quantizado/Flash Attention pode reduzir memória sem necessariamente aumentar velocidade. Alterar estas opções recarrega o modelo.
             </Text>
           </ScrollView>
           <View style={styles.modalActions}>
@@ -480,22 +596,45 @@ const styles = StyleSheet.create({
   userCard: {backgroundColor: '#2F2F2F', borderTopRightRadius: 6},
   assistantCard: {backgroundColor: '#171717', borderTopLeftRadius: 6},
   messageText: {fontSize: 15, lineHeight: 23, color: '#F5F5F5'},
-  thinkingToggle: {alignSelf: 'flex-start', marginBottom: 7, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#303030'},
-  thinkingLabel: {fontSize: 11, color: '#FFFFFF'},
-  thinkingText: {fontSize: 12, lineHeight: 18, color: '#BDBDBD', paddingLeft: 9, marginBottom: 8, borderLeftWidth: 2, borderLeftColor: '#777777'},
+  thinkingSection: {marginBottom: 12, gap: 5, width: '100%'},
+  thinkingHeader: {flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingVertical: 3},
+  thinkingBrain: {fontSize: 13, color: '#D4D4D4'},
+  thinkingLabel: {fontSize: 12, fontWeight: '600', color: '#D4D4D4', letterSpacing: 0.2},
+  thinkingArrow: {fontSize: 17, lineHeight: 19, color: '#FFFFFF'},
+  thinkingBox: {width: '100%', padding: 10, borderRadius: 13, borderWidth: 1, borderColor: '#444444', backgroundColor: '#101010'},
+  thinkingPreview: {fontSize: 12, lineHeight: 18, color: '#BDBDBD'},
+  thinkingExpandButton: {alignSelf: 'flex-end', minWidth: 28, height: 24, alignItems: 'center', justifyContent: 'center', marginTop: 3},
   chatEmpty: {paddingTop: 70, alignItems: 'center'},
   chatEmptyTitle: {fontSize: 17, fontWeight: '600', color: '#E5E5E5'},
   chatEmptyText: {fontSize: 13, color: '#A3A3A3', marginTop: 8},
   composerArea: {paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8, backgroundColor: '#000000'},
-  composer: {minHeight: 52, maxHeight: 132, flexDirection: 'row', alignItems: 'flex-end', padding: 5, gap: 8, borderRadius: 26, backgroundColor: '#111111', borderColor: '#383838', borderWidth: StyleSheet.hairlineWidth},
+  composer: {minHeight: 52, maxHeight: 132, flexDirection: 'row', alignItems: 'flex-end', padding: 5, gap: 6, borderRadius: 26, backgroundColor: '#111111', borderColor: '#383838', borderWidth: StyleSheet.hairlineWidth},
   inputWrap: {flex: 1, minHeight: 40, justifyContent: 'center', overflow: 'hidden'},
   input: {flex: 1, maxHeight: 112, paddingHorizontal: 10, paddingVertical: 9, color: '#FFFFFF', fontSize: 15, lineHeight: 21},
   placeholderLayer: {position: 'absolute', left: 10, right: 0, top: 0, bottom: 0, justifyContent: 'center', overflow: 'hidden'},
   placeholderText: {fontSize: 15, lineHeight: 21, color: '#8C8C8C'},
-  shimmerBeam: {position: 'absolute', left: 0, top: -12, bottom: -12, width: 22, backgroundColor: 'rgba(255,255,255,0.22)'},
+  brainModeButton: {height: 40, minWidth: 36, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 1},
+  brainModeIcon: {fontSize: 17, color: '#D4D4D4'},
+  brainModeArrow: {fontSize: 14, color: '#A3A3A3'},
   sendButton: {width: 40, height: 40, borderRadius: 20, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center'},
   buttonDisabled: {opacity: 0.28},
   sendButtonText: {fontSize: 20, fontWeight: '800', color: '#000000'},
+  modeScrim: {flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.72)'},
+  modeCard: {padding: 18, borderRadius: 20, backgroundColor: '#111111', borderWidth: 1, borderColor: '#383838'},
+  modeList: {gap: 7, marginTop: 15},
+  modeOption: {minHeight: 42, borderRadius: 10, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#202020'},
+  modeOptionSelected: {borderWidth: 1, borderColor: '#FFFFFF'},
+  modeOptionDisabled: {opacity: 0.48},
+  modeOptionText: {fontSize: 13, color: '#FFFFFF', fontWeight: '600'},
+  modeOptionTextDisabled: {fontSize: 13, color: '#A3A3A3'},
+  modeOptionStatus: {fontSize: 11, color: '#A3A3A3'},
+  statsCard: {padding: 12, borderRadius: 13, borderWidth: 1, borderColor: '#383838', backgroundColor: '#0B0B0B', gap: 12},
+  statsMainRow: {gap: 4},
+  statsValue: {fontSize: 24, fontWeight: '700', color: '#FFFFFF'},
+  statsCaption: {fontSize: 10, lineHeight: 15, color: '#A3A3A3'},
+  statsGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 12},
+  statsCell: {width: '46%', gap: 3},
+  statsCellValue: {fontSize: 14, fontWeight: '600', color: '#E5E5E5'},
   modalScrim: {flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)'},
   modalCard: {maxHeight: '92%', paddingTop: 20, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: '#111111', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: 1, borderColor: '#383838'},
   modalHeader: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14},
