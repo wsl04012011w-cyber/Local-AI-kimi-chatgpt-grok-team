@@ -1,6 +1,11 @@
 package dev.localai.chat
 
+import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -28,6 +33,7 @@ object AppLogger {
     private const val MAX_HISTORY_BYTES = 512 * 1024
 
     @Volatile private var logFile: File? = null
+    @Volatile private var downloadsLogUri: Uri? = null
     @Volatile private var appContext: Context? = null
     @Volatile private var previousHandler: Thread.UncaughtExceptionHandler? = null
     private val locationToastShown = AtomicBoolean(false)
@@ -78,6 +84,7 @@ object AppLogger {
                 return
             }
             logFile = preparedFile
+            prepareDownloadsLog(context)
             previousHandler = Thread.getDefaultUncaughtExceptionHandler()
             Thread.setDefaultUncaughtExceptionHandler { thread, error ->
                 // Synchronous writes are intentional: persist fatal data before process death.
@@ -218,6 +225,7 @@ object AppLogger {
                 return
             }
         }
+        mirrorToDownloads(line)
         showLocationToastOnce(target)
     }
 
@@ -253,7 +261,41 @@ object AppLogger {
                 return
             }
         }
+        mirrorToDownloads(line)
         showLocationToastOnce(target)
+    }
+
+    private fun prepareDownloadsLog(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        try {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, "localai-diagnostics-${System.currentTimeMillis()}.txt")
+                put(MediaStore.MediaColumns.MIME_TYPE, "text/plain")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/LocalAI")
+            }
+            downloadsLogUri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            val uri = downloadsLogUri
+            if (uri != null) {
+                context.contentResolver.openOutputStream(uri, "wa")?.bufferedWriter(Charsets.UTF_8)?.use {
+                    it.appendLine("${timestamp()} [INFO] [AppLogger] Diagnóstico espelhado em Downloads/LocalAI")
+                }
+            }
+        } catch (error: Throwable) {
+            downloadsLogUri = null
+            Log.e(TAG, "Não foi possível criar log em Downloads/LocalAI", error)
+        }
+    }
+
+    private fun mirrorToDownloads(line: String) {
+        val context = appContext ?: return
+        val uri = downloadsLogUri ?: return
+        try {
+            context.contentResolver.openOutputStream(uri, "wa")?.bufferedWriter(Charsets.UTF_8)?.use {
+                it.append(line)
+            }
+        } catch (error: Throwable) {
+            Log.e(TAG, "Falha ao espelhar log em Downloads/LocalAI", error)
+        }
     }
 
     private fun showLocationToastOnce(target: File) {
