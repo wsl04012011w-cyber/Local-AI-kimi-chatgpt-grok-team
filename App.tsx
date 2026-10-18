@@ -316,10 +316,10 @@ export default function App() {
                     <Text style={styles.placeholderText}>
                       {'Ask LLM...'.split('').map((character, index, characters) => {
                         const peak = index / (characters.length - 1);
-                        const inputRange = index === 0 ? [0, 0.001, 1]
-                          : index === characters.length - 1 ? [0, 0.999, 1]
-                          : [0, peak, 1];
-                        const colors = index === 0 ? ['#F4F4F4', '#F4F4F4', '#777777']
+                        const inputRange = index === 0 ? [0, 0.12, 0.24]
+                          : index === characters.length - 1 ? [0.76, 0.88, 1]
+                          : [Math.max(0, peak - 0.12), peak, Math.min(1, peak + 0.12)];
+                        const colors = index === 0 ? ['#F4F4F4', '#777777', '#777777']
                           : index === characters.length - 1 ? ['#777777', '#F4F4F4', '#F4F4F4']
                           : ['#777777', '#F4F4F4', '#777777'];
                         return (
@@ -396,7 +396,7 @@ function ThinkingModeModal({visible, onClose}: {visible: boolean; onClose: () =>
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <Pressable style={styles.modeScrim} onPress={onClose}>
-        <Pressable style={styles.modeCard} onPress={() => {}}>
+        <View style={styles.modeCard}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Thinking</Text>
             <Pressable onPress={onClose} style={styles.iconButton}>
@@ -418,7 +418,7 @@ function ThinkingModeModal({visible, onClose}: {visible: boolean; onClose: () =>
               </View>
             ))}
           </View>
-        </Pressable>
+        </View>
       </Pressable>
     </Modal>
   );
