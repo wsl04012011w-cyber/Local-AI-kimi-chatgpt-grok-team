@@ -10,10 +10,14 @@ plugins {
     id("com.facebook.react.settings")
 }
 extensions.configure<com.facebook.react.ReactSettingsExtension> {
-    // Use the React Native package's CLI shim, which delegates to the pinned
-    // @react-native-community/cli installed by npm.
+    // This repository keeps settings.gradle.kts at the JavaScript project root,
+    // unlike the standard React Native layout where it lives in ./android.
+    // Explicitly run the CLI from this settings directory so relative paths to
+    // node_modules resolve correctly in both CI and local builds.
     autolinkLibrariesFromCommand(
-        listOf("node", "node_modules/react-native/cli.js", "config")
+        listOf("node", "node_modules/react-native/cli.js", "config"),
+        workingDirectory = settingsDir,
+        lockFiles = files("package-lock.json")
     )
 }
 dependencyResolutionManagement {
