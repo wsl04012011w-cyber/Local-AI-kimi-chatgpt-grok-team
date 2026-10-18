@@ -21,15 +21,22 @@ class LocalAiApp : Application(), ReactApplication {
     }
 
     override fun attachBaseContext(base: Context) {
-        AppLogger.initialize(base)
-        AppLogger.info("Application", "attachBaseContext iniciado")
+        // Do not touch applicationContext/filesDir before Application is attached.
         super.attachBaseContext(base)
     }
 
     override fun onCreate() {
         super.onCreate()
-        AppLogger.info("Application", "Inicializando React Native")
-        loadReactNative(this)
-        AppLogger.info("Application", "React Native inicializado")
+        // Initialize diagnostics only after the Application has a valid base context,
+        // but before React Native startup so fatal startup exceptions are persisted.
+        try {
+            AppLogger.initialize(this)
+            AppLogger.info("Application", "Inicializando React Native")
+            loadReactNative(this)
+            AppLogger.info("Application", "React Native inicializado")
+        } catch (error: Throwable) {
+            AppLogger.error("Application", "Falha fatal ao inicializar React Native", error)
+            throw error
+        }
     }
 }
