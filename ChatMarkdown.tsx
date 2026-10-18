@@ -4,8 +4,8 @@ import {ScrollView, StyleSheet, Text, View} from 'react-native';
 const tick = String.fromCharCode(96);
 
 function inlineNodes(source: string, prefix: string): React.ReactNode[] {
-  const pattern = new RegExp('(\\*\\*[^*]+\\*\\*|__[^_]+__|~~[^~]+~~|==[^=]+==|' +
-    tick + '[^' + tick + ']+' + tick + '|\\*[^*\\n]+\\*|_[^_\\n]+_)', 'g');
+  const pattern = new RegExp('(\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|==[^=]+==|' +
+    tick + '[^' + tick + ']+' + tick + '|\*[^*\n]+\*|_[^_\n]+_)', 'g');
   const result: React.ReactNode[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
@@ -32,23 +32,23 @@ function inlineNodes(source: string, prefix: string): React.ReactNode[] {
 }
 
 function cellsOf(line: string): string[] {
-  return line.trim().replace(/^\\|/, '').replace(/\\|$/, '').split('|').map(cell => cell.trim());
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(cell => cell.trim());
 }
 
 function isSeparator(line: string): boolean {
-  return /^\\s*\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*$/.test(line);
+  return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
 }
 
 export default function ChatMarkdown({content, thinking = false}: {content: string; thinking?: boolean}) {
-  const lines = content.replace(/\\r\\n/g, '\\n').split('\\n');
+  const lines = content.replace(/\r\n/g, '\n').split('\n');
   const blocks: React.ReactNode[] = [];
   let i = 0;
   let key = 0;
   const structural = (line: string) =>
     line.startsWith(tick + tick + tick) ||
-    /^\\s{0,3}#{1,6}\\s/.test(line) ||
-    /^\\s*>/.test(line) ||
-    /^\\s*([-*+]\\s+|\\d+[.)]\\s+)/.test(line);
+    /^\s{0,3}#{1,6}\s/.test(line) ||
+    /^\s*>/.test(line) ||
+    /^\s*([-*+]\s+|\d+[.)]\s+)/.test(line);
 
   while (i < lines.length) {
     const line = lines[i];
@@ -64,7 +64,7 @@ export default function ChatMarkdown({content, thinking = false}: {content: stri
         <View key={'code-' + key++} style={styles.codeCard}>
           {!!language && <Text style={styles.language}>{language}</Text>}
           <ScrollView horizontal nestedScrollEnabled>
-            <Text selectable style={styles.codeText}>{code.join('\\n')}</Text>
+            <Text selectable style={styles.codeText}>{code.join('\n')}</Text>
           </ScrollView>
         </View>,
       );
@@ -101,7 +101,7 @@ export default function ChatMarkdown({content, thinking = false}: {content: stri
       continue;
     }
 
-    const heading = line.match(/^\\s{0,3}(#{1,3})\\s+(.*)$/);
+    const heading = line.match(/^\s{0,3}(#{1,3})\s+(.*)$/);
     if (heading) {
       const headingStyle = heading[1].length === 1 ? styles.h1 : heading[1].length === 2 ? styles.h2 : styles.h3;
       blocks.push(<Text key={'heading-' + key++} style={headingStyle}>{inlineNodes(heading[2], 'heading-' + key)}</Text>);
@@ -109,18 +109,18 @@ export default function ChatMarkdown({content, thinking = false}: {content: stri
       continue;
     }
 
-    if (/^\\s*>/.test(line)) {
+    if (/^\s*>/.test(line)) {
       const quote: string[] = [];
-      while (i < lines.length && /^\\s*>/.test(lines[i])) quote.push(lines[i++].replace(/^\\s*>\\s?/, ''));
-      blocks.push(<Text key={'quote-' + key++} style={styles.quote}>{inlineNodes(quote.join('\\n'), 'quote-' + key)}</Text>);
+      while (i < lines.length && /^\s*>/.test(lines[i])) quote.push(lines[i++].replace(/^\s*>\s?/, ''));
+      blocks.push(<Text key={'quote-' + key++} style={styles.quote}>{inlineNodes(quote.join('\n'), 'quote-' + key)}</Text>);
       continue;
     }
 
-    const list = line.match(/^\\s*([-*+]\\s+|\\d+[.)]\\s+)(.*)$/);
+    const list = line.match(/^\s*([-*+]\s+|\d+[.)]\s+)(.*)$/);
     if (list) {
-      const ordered = /^\\d/.test(list[1]);
+      const ordered = /^\d/.test(list[1]);
       while (i < lines.length) {
-        const current = lines[i].match(/^\\s*([-*+]\\s+|\\d+[.)]\\s+)(.*)$/);
+        const current = lines[i].match(/^\s*([-*+]\s+|\d+[.)]\s+)(.*)$/);
         if (!current) break;
         blocks.push(
           <View key={'list-' + key++} style={styles.listRow}>
@@ -139,7 +139,7 @@ export default function ChatMarkdown({content, thinking = false}: {content: stri
       !(i + 1 < lines.length && lines[i].includes('|') && isSeparator(lines[i + 1]))) {
       paragraph.push(lines[i++]);
     }
-    blocks.push(<Text key={'p-' + key++} selectable style={thinking ? styles.thinkingParagraph : styles.paragraph}>{inlineNodes(paragraph.join('\\n'), 'p-' + key)}</Text>);
+    blocks.push(<Text key={'p-' + key++} selectable style={thinking ? styles.thinkingParagraph : styles.paragraph}>{inlineNodes(paragraph.join('\n'), 'p-' + key)}</Text>);
   }
 
   return <View style={styles.body}>{blocks}</View>;
