@@ -174,9 +174,13 @@ export default function App() {
     const text = draft.trim();
     if (!text || !modelReady) return;
     if (state.isGenerating) {
-      if (stopRequested) {
-        pendingSendRef.current = text;
-        setDraft('');
+      // Queue a follow-up even while cancellation is in flight; native state may
+      // briefly remain generating after stopGeneration() has been requested.
+      pendingSendRef.current = text;
+      setDraft('');
+      if (!stopRequested) {
+        setStopRequested(true);
+        bridge.stopGeneration();
       }
       return;
     }
@@ -233,7 +237,8 @@ export default function App() {
         <StatusBar barStyle="light-content" />
         <KeyboardAvoidingView
           style={styles.screen}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 12}>
           <View style={styles.topControls}>
             <View style={styles.topControlsSpacer} />
             <Pressable
@@ -340,7 +345,7 @@ export default function App() {
                   placeholder=""
                   multiline
                   maxLength={12000}
-                  editable={modelReady && (!state.isGenerating || stopRequested)}
+                  editable={modelReady}
                   onFocus={() => setInputFocused(true)}
                   onBlur={() => setInputFocused(false)}
                   onSubmitEditing={send}
