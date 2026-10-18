@@ -39,7 +39,7 @@ function isSeparator(line: string): boolean {
   return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
 }
 
-export default function ChatMarkdown({content, thinking = false}: {content: string; thinking?: boolean}) {
+function ChatMarkdown({content, thinking = false}: {content: string; thinking?: boolean}) {
   const lines = content.replace(/\r\n/g, '\n').split('\n');
   const blocks: React.ReactNode[] = [];
   let i = 0;
@@ -170,3 +170,6 @@ const styles = StyleSheet.create({
   tableHeaderText: {fontSize: 12, fontWeight: '700', color: '#FFFFFF'},
   tableText: {fontSize: 12, lineHeight: 17, color: '#E5E5E5'},
 });
+
+// Prior messages keep the same content during streaming; skip reparsing those blocks.
+export default React.memo(ChatMarkdown);
