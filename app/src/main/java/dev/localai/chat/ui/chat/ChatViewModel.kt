@@ -230,10 +230,10 @@ class ChatViewModel @Inject constructor(
                         }
                         if (out.visibleDelta.isNotEmpty()) visibleSb.append(out.visibleDelta)
 
-                        // Agrupa a publicação em no máximo ~16 atualizações por segundo.
+                        // Agrupa a publicação em até ~30 atualizações por segundo para reduzir a latência visual sem emitir um evento por token.
                         // toString() e a cópia do item visual só acontecem no flush agrupado.
                         val now = SystemClock.elapsedRealtime()
-                        if (now - lastUiPublishMs >= 60L) {
+                        if (now - lastUiPublishMs >= 33L) {
                             updateStreaming(
                                 assistantId,
                                 visibleSb.toString(),
