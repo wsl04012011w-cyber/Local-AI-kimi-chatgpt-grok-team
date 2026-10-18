@@ -5,7 +5,7 @@ const tick = String.fromCharCode(96);
 
 function inlineNodes(source: string, prefix: string): React.ReactNode[] {
   // Keep this as a regex literal: dynamic construction caused an invalid RegExp in Hermes on Android.
-  const pattern = /(\\*\\*[^*]+\\*\\*|__[^_]+__|~~[^~]+~~|==[^=]+==|`[^`]+`|\\*[^*\\n]+\\*|_[^_\\n]+_)/g;
+  const pattern = /(\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|==[^=]+==|`[^`]+`|\*[^*\n]+\*|_[^_\n]+_)/g;
   const result: React.ReactNode[] = [];
   let cursor = 0;
   let match: RegExpExecArray | null;
